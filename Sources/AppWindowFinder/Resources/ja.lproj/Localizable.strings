@@ -1,0 +1,22 @@
+/* SearchView */
+"Search apps, windows, and tabs..." = "アプリ、ウィンドウ、タブを検索...";
+"Application" = "アプリケーション";
+"Window" = "ウィンドウ";
+"Browser Tab" = "ブラウザタブ";
+
+/* Permissions */
+"Accessibility Permission Required" = "アクセシビリティ権限が必要です";
+"This app needs accessibility permission to switch between windows." = "ウィンドウを切り替えるにはアクセシビリティ権限が必要です。";
+"Open System Preferences" = "システム環境設定を開く";
+"Cancel" = "キャンセル";
+
+/* Window Management */
+"No windows found" = "ウィンドウが見つかりません";
+"Untitled Window" = "無題のウィンドウ";
+"Unknown Application" = "不明なアプリケーション";
+
+/* Settings */
+"Settings" = "設定";
+"Hotkey" = "ホットキー";
+"Appearance" = "外観";
+"About" = "このアプリについて";

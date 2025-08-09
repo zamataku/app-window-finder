@@ -1,0 +1,22 @@
+/* SearchView */
+"Search apps, windows, and tabs..." = "Search apps, windows, and tabs...";
+"Application" = "Application";
+"Window" = "Window";
+"Browser Tab" = "Browser Tab";
+
+/* Permissions */
+"Accessibility Permission Required" = "Accessibility Permission Required";
+"This app needs accessibility permission to switch between windows." = "This app needs accessibility permission to switch between windows.";
+"Open System Preferences" = "Open System Preferences";
+"Cancel" = "Cancel";
+
+/* Window Management */
+"No windows found" = "No windows found";
+"Untitled Window" = "Untitled Window";
+"Unknown Application" = "Unknown Application";
+
+/* Settings */
+"Settings" = "Settings";
+"Hotkey" = "Hotkey";
+"Appearance" = "Appearance";
+"About" = "About";

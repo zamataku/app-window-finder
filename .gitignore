@@ -1,0 +1,89 @@
+# Xcode
+## User settings
+xcuserdata/
+
+## Compatibility with Xcode versions
+*.xcscmblueprint
+*.xccheckout
+*.xcuserstate
+*.hmap
+*.generated.swift
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+*.xcworkspace
+
+# Build artifacts and distribution
+DerivedData/
+build/
+dist/
+*.app
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Code signing and security
+*.mobileprovision
+*.p12
+*.cer
+*.certSigningRequest
+.netrc
+*.keychain
+
+# IDE Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Local configuration
+.local/
+config.local.*
+.env
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Archive files (allow distribution DMGs)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+!dist/*.dmg

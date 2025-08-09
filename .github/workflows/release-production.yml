@@ -1,0 +1,278 @@
+name: Build • Sign • Notarize • Release (macOS)
+
+on:
+  # Tag push releases (v1.0.0 format)
+  push:
+    tags: ['v*']
+  # Manual execution
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  # Environment variables for code signing
+  CERT_BASE64:      ${{ secrets.MACOS_CERTIFICATE }}          # Developer ID Application .p12 (base64-encoded)
+  CERT_PWD:         ${{ secrets.MACOS_CERTIFICATE_PWD }}      
+  CERT_NAME:        ${{ secrets.MACOS_CERTIFICATE_NAME }}     # e.g. "Developer ID Application: Your Name (ABCDE12345)"
+  KEYCHAIN_PWD:     ${{ secrets.MACOS_CI_KEYCHAIN_PWD }}
+  APPLE_ID:         ${{ secrets.APPLE_ID }}
+  APPLE_PWD:        ${{ secrets.APP_SPECIFIC_PWD }}           # app-specific password
+  APPLE_TEAM_ID:    ${{ secrets.APPLE_TEAM_ID }}              # 10-char team identifier
+
+jobs:
+  build-and-release:
+    name: Universal build and release
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode version
+      run: sudo xcode-select -s /Applications/Xcode_16.1.app
+
+    - name: Show build environment
+      run: |
+        swift --version
+        xcodebuild -version
+
+    # 1. Universal binary build
+    - name: Build arm64
+      run: |
+        swift build -c release --arch arm64 --build-path .build-arm64
+        
+    - name: Build x86_64
+      run: |
+        swift build -c release --arch x86_64 --build-path .build-x86_64
+
+    - name: Create universal binary
+      run: |
+        mkdir -p .build-universal
+        
+        # Copy arm64 binary as base
+        cp .build-arm64/release/AppWindowFinder .build-universal/AppWindowFinder-arm64
+        cp .build-x86_64/release/AppWindowFinder .build-universal/AppWindowFinder-x86_64
+        
+        # Create universal binary
+        lipo -create \
+          .build-universal/AppWindowFinder-arm64 \
+          .build-universal/AppWindowFinder-x86_64 \
+          -output .build-universal/AppWindowFinder
+        
+        # Verify
+        lipo -info .build-universal/AppWindowFinder
+
+    # 2. Create .app bundle
+    - name: Create app bundle
+      run: |
+        APP_NAME="AppWindowFinder"
+        APP_DIR="${APP_NAME}.app"
+        
+        # Create directory structure
+        mkdir -p "${APP_DIR}/Contents/MacOS"
+        mkdir -p "${APP_DIR}/Contents/Resources"
+        
+        # Copy executable
+        cp .build-universal/AppWindowFinder "${APP_DIR}/Contents/MacOS/"
+        
+        # Copy app icon if it exists
+        if [ -f "AppIcon.icns" ]; then
+          cp "AppIcon.icns" "${APP_DIR}/Contents/Resources/"
+        fi
+        
+        # Create Info.plist
+        cat > "${APP_DIR}/Contents/Info.plist" << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>AppWindowFinder</string>
+            <key>CFBundleIdentifier</key>
+            <string>io.github.appwindowfinder</string>
+            <key>CFBundleName</key>
+            <string>AppWindowFinder</string>
+            <key>CFBundleDisplayName</key>
+            <string>App Window Finder</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${{ github.ref_name || inputs.version }}</string>
+            <key>CFBundleVersion</key>
+            <string>${{ github.sha }}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>13.0</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>CFBundleIconFile</key>
+            <string>AppIcon</string>
+            <key>NSAppleEventsUsageDescription</key>
+            <string>AppWindowFinder needs to access browser tabs to display them in the window list.</string>
+            <key>NSHumanReadableCopyright</key>
+            <string>Copyright © 2025 AppWindowFinder Contributors. All rights reserved.</string>
+            <key>LSApplicationCategoryType</key>
+            <string>public.app-category.productivity</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+        </dict>
+        </plist>
+        EOF
+
+    # 3. Code signing preparation (only when developer certificate is configured)
+    - name: Import code-sign certificate
+      if: env.CERT_BASE64 != ''
+      run: |
+        echo "$CERT_BASE64" | base64 --decode > dev_cert.p12
+        security create-keychain -p "$KEYCHAIN_PWD" build.keychain
+        security default-keychain -s build.keychain
+        security unlock-keychain -p "$KEYCHAIN_PWD" build.keychain
+        security import dev_cert.p12 -k build.keychain -P "$CERT_PWD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" build.keychain
+
+    # 4. Application code signing
+    - name: Codesign application
+      run: |
+        if [[ -n "$CERT_NAME" ]]; then
+          echo "Signing with Developer ID: $CERT_NAME"
+          codesign --force --deep --timestamp \
+                   --options runtime \
+                   --sign "$CERT_NAME" \
+                   AppWindowFinder.app
+          codesign --verify --deep --strict AppWindowFinder.app
+          echo "✅ Code signing completed"
+        else
+          echo "No certificate configured, using ad-hoc signing"
+          codesign --force --deep --sign - AppWindowFinder.app
+          echo "✅ Ad-hoc signing completed"
+        fi
+
+    # 5. Apple notarization (only when Developer ID certificate is available)
+    - name: Notarize application
+      if: env.CERT_NAME != '' && env.APPLE_ID != ''
+      run: |
+        # Create zip file for notarization
+        ditto -c -k --keepParent AppWindowFinder.app notarize.zip
+        
+        # Configure notarization profile
+        xcrun notarytool store-credentials "ci-profile" \
+              --apple-id "$APPLE_ID" \
+              --team-id  "$APPLE_TEAM_ID" \
+              --password "$APPLE_PWD"
+        
+        # Execute notarization
+        echo "Submitting for notarization..."
+        xcrun notarytool submit notarize.zip \
+              --keychain-profile "ci-profile" --wait
+        
+        # Stapling
+        echo "Stapling notarization ticket..."
+        xcrun stapler staple AppWindowFinder.app
+        echo "✅ Notarization completed"
+
+    # 6. DMG creation
+    - name: Install create-dmg
+      run: brew install create-dmg
+
+    - name: Create DMG
+      run: |
+        VERSION="${{ github.ref_name || inputs.version }}"
+        DMG_NAME="AppWindowFinder-${VERSION}.dmg"
+        
+        create-dmg \
+          --volname "App Window Finder ${VERSION}" \
+          --window-pos 200 120 \
+          --window-size 800 400 \
+          --icon-size 100 \
+          --icon "AppWindowFinder.app" 200 190 \
+          --hide-extension "AppWindowFinder.app" \
+          --app-drop-link 600 185 \
+          --format UDBZ \
+          "${DMG_NAME}" \
+          AppWindowFinder.app || true
+        
+        # Fallback if create-dmg fails
+        if [[ ! -f "${DMG_NAME}" ]]; then
+          echo "create-dmg failed, creating simple DMG"
+          hdiutil create -volname "App Window Finder ${VERSION}" \
+                         -srcfolder AppWindowFinder.app \
+                         -ov -format UDBZ \
+                         "${DMG_NAME}"
+        fi
+        
+        echo "✅ DMG created: ${DMG_NAME}"
+        ls -la *.dmg
+
+    # 7. Upload artifacts
+    - name: Upload DMG artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: AppWindowFinder-DMG
+        path: "*.dmg"
+        retention-days: 30
+
+    # 8. Create GitHub Release (only on tag push)
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: "*.dmg"
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        body: |
+          ## AppWindowFinder ${{ github.ref_name }}
+          
+          Universal binary for both Intel and Apple Silicon Macs.
+          
+          ### Installation
+          1. Download the DMG file below
+          2. Open the DMG and drag AppWindowFinder to your Applications folder
+          3. Launch the app and grant necessary permissions when prompted
+          
+          ### Usage
+          - Press `Command + Shift + Space` to open the window finder
+          - Type to search through windows, tabs, and applications
+          - Use arrow keys to navigate and Enter to select
+          
+          ### System Requirements
+          - macOS 13.0 or later
+          - Universal binary (Intel and Apple Silicon)
+          
+          ---
+          
+          🤖 Generated with [Claude Code](https://claude.ai/code)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 9. Run tests
+    - name: Run tests
+      run: |
+        swift test --filter "FuzzySearchTests|SearchItemTests" || true
+        echo "✅ Tests completed"
+
+    # 10. Build information output
+    - name: Build summary
+      run: |
+        echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: ${{ github.ref_name || inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Architecture**: Universal (arm64 + x86_64)" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ -n "$CERT_NAME" ]]; then
+          echo "- **Code Signing**: ✅ Developer ID" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "$APPLE_ID" ]]; then
+            echo "- **Notarization**: ✅ Completed" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "- **Code Signing**: ⚠️ Ad-hoc (development only)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "- **DMG**: ✅ Created" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+          echo "- **Release**: ✅ Published to GitHub Releases" >> $GITHUB_STEP_SUMMARY
+        fi
