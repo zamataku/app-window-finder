@@ -6,7 +6,7 @@ struct CICDTests {
     
     @Test("Build script is executable")
     func testBuildScriptExistence() async throws {
-        let buildScriptPath = "build.sh"
+        let buildScriptPath = "build-and-package.sh"
         let fileManager = FileManager.default
         
         #expect(fileManager.fileExists(atPath: buildScriptPath))

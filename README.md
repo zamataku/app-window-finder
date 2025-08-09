@@ -130,13 +130,21 @@ Restart the app to clear cache if experiencing slow performance.
 
 ```
 Sources/AppWindowFinder/
-├── Models/          # Data structures for search items
-├── Services/        # Window management, hotkey handling, browser integration
-├── Views/           # SwiftUI-based search interface
-├── Utils/           # Fuzzy search, logging, accessibility helpers
-├── Utilities/       # Bundle extensions and helpers
-├── Resources/       # Localization files (en, ja)
-└── main.swift       # Application entry point
+├── App/                    # Application layer (AppDelegate, main app)
+├── Core/                   # Core functionality and shared utilities
+│   ├── Cache/             # Cache management
+│   ├── Logging/           # Application logging
+│   ├── Permissions/       # Accessibility permission handling
+│   └── Search/            # Fuzzy search algorithm
+├── Extensions/             # Swift extensions (NSImage, etc.)
+├── Models/                 # Data structures for search items
+├── Services/               # Business logic layer
+│   ├── BrowserIntegration/ # Browser tab retrieval
+│   ├── HotkeyManager      # Global hotkey handling
+│   ├── SearchHistoryManager # Search history tracking
+│   └── WindowManager      # Window information management
+├── Views/                  # SwiftUI-based search interface
+└── Resources/              # Localization files (en, ja)
 ```
 
 ## Privacy
