@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-enum LogLevel {
+public enum LogLevel {
     case debug
     case info
     case warning
@@ -47,7 +47,7 @@ struct AppLogger {
     }
 }
 
-enum LogCategory {
+public enum LogCategory {
     case windowManager
     case hotkeyManager
     case general

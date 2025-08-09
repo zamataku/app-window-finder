@@ -142,11 +142,13 @@ xattr -cr "${MOUNT_DIR}/${APP_NAME}.app"
 
 # Create Applications symlink
 echo "Creating Applications symlink..."
-ln -s /Applications "${MOUNT_DIR}/Applications"
+if [ ! -L "${MOUNT_DIR}/Applications" ]; then
+    ln -s /Applications "${MOUNT_DIR}/Applications"
+fi
 
 # Set custom icon positions and window properties using AppleScript
 echo "Setting DMG window properties..."
-osascript <<EOF
+if ! osascript <<EOF 2>/dev/null
 tell application "Finder"
     tell disk "${VOLUME_NAME}"
         open
@@ -166,6 +168,10 @@ tell application "Finder"
     end tell
 end tell
 EOF
+then
+    echo "⚠️  AppleScript execution failed (automation permissions may be required)"
+    echo "   DMG will be created without custom window properties"
+fi
 
 # Unmount the temporary DMG
 echo "Unmounting temporary DMG..."

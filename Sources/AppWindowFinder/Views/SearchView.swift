@@ -74,15 +74,15 @@ struct SearchView: View {
             }
         }
         .onAppear {
-            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                handleKeyEvent(event)
+            // Prevent duplicate monitors
+            if eventMonitor == nil {
+                eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    handleKeyEvent(event)
+                }
             }
         }
         .onDisappear {
-            if let monitor = eventMonitor {
-                NSEvent.removeMonitor(monitor)
-                eventMonitor = nil
-            }
+            cleanupEventMonitor()
         }
     }
     
@@ -163,6 +163,13 @@ struct SearchView: View {
         onSelect(item)
         onDismiss()
     }
+    
+    private func cleanupEventMonitor() {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+    }
 }
 
 struct SearchItemRow: View {
@@ -211,7 +218,9 @@ struct SearchItemRow: View {
         case .window:
             typeLabel = NSLocalizedString("Window", comment: "Accessibility label for window type")
         case .tab:
-            typeLabel = NSLocalizedString("Browser Tab", comment: "Accessibility label for tab type")
+            typeLabel = NSLocalizedString("Tab", comment: "Accessibility label for tab type")
+        case .browserTab:
+            typeLabel = NSLocalizedString("Browser Tab", comment: "Accessibility label for browser tab type")
         }
         
         return "\(typeLabel): \(item.title), \(item.subtitle)"
@@ -225,6 +234,8 @@ struct SearchItemRow: View {
             return "macwindow"
         case .tab:
             return "safari"
+        case .browserTab:
+            return "globe"
         }
     }
 }

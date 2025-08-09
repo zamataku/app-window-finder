@@ -4,18 +4,75 @@ import CoreGraphics
 import os.log
 
 @MainActor
-public class WindowManager {
+public class WindowManager: WindowManaging {
     public static let shared = WindowManager()
+    
+    // Dependencies
+    private let browserHistoryService: BrowserHistoryProviding
+    private let faviconService: FaviconProviding
+    private let appleScriptExecutor: AppleScriptExecuting
+    private let container: ServiceContainer
+    
     private var cachedItems: [SearchItem]?
     private var lastCacheTime: Date?
     private let cacheExpirationInterval: TimeInterval = 300 // 5 minutes
+    private var permissionCache: [String: Bool] = [:]  // Cache for automation permissions
     
-    private init() {}
+    public var searchItems: [SearchItem] {
+        return cachedItems ?? []
+    }
+    
+    // Default initializer for shared instance  
+    private convenience init() {
+        self.init(container: ServiceContainer.shared)
+    }
+    
+    // Dependency injection initializer
+    public init(container: ServiceContainer = ServiceContainer.shared) {
+        self.container = container
+        self.browserHistoryService = container.getBrowserHistoryService()
+        self.faviconService = container.getFaviconService()
+        self.appleScriptExecutor = container.getAppleScriptExecutor()
+        
+        // アプリ起動時にブラウザ権限をプリエンプティブにチェック
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.preemptivelyRequestBrowserPermissions()
+        }
+    }
     
     public func refreshWindows() {
         let items = fetchAllSearchItems()
         cachedItems = items
         lastCacheTime = Date()
+    }
+    
+    public func refreshWindows() async {
+        let items = fetchAllSearchItems()
+        cachedItems = items
+        lastCacheTime = Date()
+    }
+    
+    public func activateWindow(_ item: SearchItem) async -> Bool {
+        switch item.type {
+        case .window:
+            activateWindow(windowID: item.windowID)
+            return true
+        case .app:
+            if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == item.bundleIdentifier }) {
+                app.activate(options: [])
+            }
+            return true
+        case .tab:
+            activateTab(appName: item.appName, tabIndex: 0) // Simplified for now
+            return true
+        case .browserTab:
+            // For browser tabs, we could open the URL in a new tab
+            if let urlString = item.url, let url = URL(string: urlString) {
+                NSWorkspace.shared.open(url)
+                return true
+            }
+            return false
+        }
     }
     
     public func getAllSearchItems() -> [SearchItem] {
@@ -36,6 +93,7 @@ public class WindowManager {
     public func clearCache() {
         cachedItems = nil
         lastCacheTime = nil
+        permissionCache.removeAll()  // Also clear permission cache
     }
     
     private func fetchAllSearchItems() -> [SearchItem] {
@@ -44,6 +102,7 @@ public class WindowManager {
         
         // First, get all running windows
         let windows = getWindows()
+        AppLogger.log("Found \(windows.count) total windows", level: .debug, category: .windowManager)
         var runningAppNames = Set<String>()
         
         for window in windows {
@@ -102,7 +161,7 @@ public class WindowManager {
                 AppLogger.log("Found \(tabs.count) tabs for \(appName) window \(windowID)", level: .info, category: .windowManager)
                 items.append(contentsOf: tabs)
             } else {
-                AppLogger.log("No tabs found for \(appName) window \(windowID)", level: .debug, category: .windowManager)
+                AppLogger.log("No tabs found for \(appName) window \(windowID) - app may not support tab retrieval or access denied", level: .info, category: .windowManager)
             }
         }
         
@@ -116,7 +175,15 @@ public class WindowManager {
             items.append(app)
         }
         
-        AppLogger.log("Fetch complete. Total items: \(items.count), Windows: \(items.filter { $0.type == .window }.count), Apps: \(items.filter { $0.type == .app }.count), Tabs: \(items.filter { $0.type == .tab }.count)", level: .info, category: .windowManager)
+        // Add recent browser tabs from history (more comprehensive than AppleScript)
+        switch browserHistoryService.getRecentTabs(limit: 30) {
+        case .success(let historyTabs):
+            items.append(contentsOf: historyTabs)
+        case .failure(let error):
+            AppLogger.logError(error, context: "Failed to get browser history tabs", category: .windowManager)
+        }
+        
+        AppLogger.log("Fetch complete. Total items: \(items.count), Windows: \(items.filter { $0.type == .window }.count), Apps: \(items.filter { $0.type == .app }.count), Tabs: \(items.filter { $0.type == .tab }.count), Browser Tabs: \(items.filter { $0.type == .browserTab }.count)", level: .info, category: .windowManager)
         return items
     }
     
@@ -195,7 +262,8 @@ public class WindowManager {
     }
     
     private func getTabsForWindow(appName: String, windowID: Int, processID: pid_t) -> [SearchItem]? {
-        let supportedBrowsers = ["Safari", "Google Chrome", "Firefox", "Arc", "Brave Browser", "Microsoft Edge"]
+        // Arc currently has limited AppleScript support for tab access
+        let supportedBrowsers = ["Safari", "Google Chrome", "Firefox", "Brave Browser", "Microsoft Edge"]
         guard supportedBrowsers.contains(appName) else { 
             AppLogger.log("App \(appName) not supported for tab retrieval", level: .debug, category: .windowManager)
             return nil 
@@ -215,7 +283,7 @@ public class WindowManager {
         case "Google Chrome", "Brave Browser", "Microsoft Edge":
             tabs = getChromiumTabs(appName: appName, windowID: windowID, processID: processID, icon: appIcon)
         default:
-            // Firefox, Arc, and others not implemented yet
+            // Arc, Firefox and others not implemented yet
             return []
         }
         
@@ -223,6 +291,11 @@ public class WindowManager {
     }
     
     private func getSafariTabs(windowID: Int, processID: pid_t, icon: NSImage) -> [SearchItem] {
+        // Request permission explicitly for better user experience
+        if !requestAutomationPermission(for: "Safari") {
+            return []
+        }
+        
         // Get window index based on windowID
         let windowIndex = getWindowIndex(for: windowID, processID: processID, appName: "Safari") ?? 1
         
@@ -267,6 +340,7 @@ public class WindowManager {
                 continue
             }
             
+            let favicon = faviconService.getFaviconNonBlocking(for: tabURL, fallbackIcon: icon)
             let tab = SearchItem(
                 title: tabTitle.isEmpty ? "Untitled Tab" : tabTitle,
                 subtitle: "Safari - \(tabURL)",
@@ -275,7 +349,75 @@ public class WindowManager {
                 windowID: windowID,
                 tabIndex: Int(tabIndex) - 1,
                 processID: processID,
-                icon: icon
+                icon: favicon,
+                tabURL: tabURL
+            )
+            tabs.append(tab)
+        }
+        
+        return tabs
+    }
+    
+    private func getArcTabs(windowID: Int, processID: pid_t, icon: NSImage) -> [SearchItem] {
+        // Get window index based on windowID
+        let windowIndex = getWindowIndex(for: windowID, processID: processID, appName: "Arc") ?? 1
+        
+        AppLogger.log("Getting Arc tabs for windowID: \(windowID), windowIndex: \(windowIndex)", level: .debug, category: .windowManager)
+        
+        let script = """
+        tell application "Arc"
+            set tabList to {}
+            if (count of windows) >= \(windowIndex) then
+                set w to window \(windowIndex)
+                set tabCount to count of tabs of w
+                repeat with i from 1 to tabCount
+                    set t to tab i of w
+                    set tabTitle to title of t
+                    set tabURL to URL of t
+                    set end of tabList to {i, tabTitle, tabURL}
+                end repeat
+            end if
+            return tabList
+        end tell
+        """
+        
+        var error: NSDictionary?
+        guard let scriptObject = NSAppleScript(source: script) else {
+            AppLogger.log("Failed to create AppleScript object for Arc tabs", level: .error, category: .windowManager)
+            return []
+        }
+        
+        let result = scriptObject.executeAndReturnError(&error)
+        if let error = error {
+            handleAppleScriptError(error as? NSError, browser: "Arc")
+            return []
+        }
+        
+        var tabs: [SearchItem] = []
+        let count = result.numberOfItems
+        
+        AppLogger.log("Got \(count) tabs from Arc window \(windowIndex)", level: .debug, category: .windowManager)
+        
+        for i in 1...count {
+            guard let tabInfo = result.atIndex(i),
+                  tabInfo.numberOfItems >= 3,
+                  let tabIndex = tabInfo.atIndex(1)?.int32Value,
+                  let tabTitle = tabInfo.atIndex(2)?.stringValue,
+                  let tabURL = tabInfo.atIndex(3)?.stringValue else {
+                continue
+            }
+            
+            let favicon = faviconService.getFaviconNonBlocking(for: tabURL, fallbackIcon: icon)
+            let tab = SearchItem(
+                title: tabTitle.isEmpty ? "Untitled Tab" : tabTitle,
+                subtitle: "Arc - \(tabURL)",
+                type: .tab,
+                appName: "Arc",
+                windowID: windowID,
+                tabIndex: Int(tabIndex) - 1,
+                processID: processID,
+                icon: favicon,
+                tabURL: tabURL
             )
             tabs.append(tab)
         }
@@ -306,22 +448,27 @@ public class WindowManager {
         end tell
         """
         
-        var error: NSDictionary?
+        var scriptError: NSDictionary?
         guard let scriptObject = NSAppleScript(source: script) else {
             AppLogger.log("Failed to create AppleScript object for \(appName) tabs", level: .error, category: .windowManager)
             return []
         }
         
-        let result = scriptObject.executeAndReturnError(&error)
-        if let error = error {
-            handleAppleScriptError(error as? NSError, browser: appName)
+        let result = scriptObject.executeAndReturnError(&scriptError)
+        if let scriptError = scriptError {
+            handleAppleScriptError(scriptError as? NSError, browser: appName)
             return []
         }
         
         var tabs: [SearchItem] = []
         let count = result.numberOfItems
         
-        AppLogger.log("Got \(count) tabs from \(appName) window \(windowIndex)", level: .debug, category: .windowManager)
+        AppLogger.log("Got \(count) tabs from \(appName) window \(windowIndex) (windowID: \(windowID))", level: .debug, category: .windowManager)
+        
+        if count == 0 {
+            AppLogger.log("No tabs returned from AppleScript for \(appName)", level: .warning, category: .windowManager)
+            return []
+        }
         
         for i in 1...count {
             guard let tabInfo = result.atIndex(i),
@@ -332,6 +479,7 @@ public class WindowManager {
                 continue
             }
             
+            let favicon = faviconService.getFaviconNonBlocking(for: tabURL, fallbackIcon: icon)
             let tab = SearchItem(
                 title: tabTitle.isEmpty ? "Untitled Tab" : tabTitle,
                 subtitle: "\(appName) - \(tabURL)",
@@ -340,7 +488,8 @@ public class WindowManager {
                 windowID: windowID,
                 tabIndex: Int(tabIndex) - 1,
                 processID: processID,
-                icon: icon
+                icon: favicon,
+                tabURL: tabURL
             )
             tabs.append(tab)
         }
@@ -366,14 +515,19 @@ public class WindowManager {
             let app = NSRunningApplication(processIdentifier: item.processID)
             app?.activate(options: .activateIgnoringOtherApps)
             
-            Thread.sleep(forTimeInterval: 0.1)
-            
-            if item.type == .window || item.type == .tab {
-                activateWindow(windowID: item.windowID)
-            }
-            
-            if item.type == .tab, let tabIndex = item.tabIndex {
-                activateTab(appName: item.appName, tabIndex: tabIndex)
+            // Use async delay instead of blocking Thread.sleep
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                if item.type == .window || item.type == .tab {
+                    self?.activateWindow(windowID: item.windowID)
+                }
+                
+                if item.type == .tab, let tabIndex = item.tabIndex {
+                    self?.activateTab(appName: item.appName, tabIndex: tabIndex)
+                }
+                
+                if item.type == .browserTab, let url = item.url {
+                    self?.openURLInBrowser(url: url, bundleIdentifier: item.bundleIdentifier)
+                }
             }
         }
     }
@@ -432,6 +586,131 @@ public class WindowManager {
         }
     }
     
+    // MARK: - Permission Management
+    
+    private func preemptivelyRequestBrowserPermissions() {
+        AppLogger.log("Preemptively checking browser automation permissions", level: .info, category: .windowManager)
+        
+        let supportedBrowsers = ["Safari", "Google Chrome", "Microsoft Edge", "Brave Browser"]
+        let runningApps = NSWorkspace.shared.runningApplications
+        
+        // 実行中のブラウザに対してのみ権限をリクエスト
+        for app in runningApps {
+            if let appName = app.localizedName,
+               supportedBrowsers.contains(appName) {
+                AppLogger.log("Found running browser: \(appName), requesting permission", level: .info, category: .windowManager)
+                // メインスレッドで同期的に実行して権限プロンプトを確実に表示
+                DispatchQueue.main.async {
+                    _ = self.requestAutomationPermissionSynchronously(for: appName)
+                }
+            }
+        }
+    }
+    
+    public func checkAutomationPermission(for appName: String) -> Bool {
+        return requestAutomationPermission(for: appName)
+    }
+    
+    public func requestBrowserPermissions() {
+        preemptivelyRequestBrowserPermissions()
+    }
+    
+    private func requestAutomationPermission(for appName: String) -> Bool {
+        // Check cache first
+        if let cachedPermission = permissionCache[appName] {
+            return cachedPermission
+        }
+        
+        AppLogger.log("Checking automation permission for \(appName)", level: .info, category: .windowManager)
+        
+        // Create a simple permission check script
+        let permissionScript = """
+        tell application "\(appName)"
+            get name
+        end tell
+        """
+        
+        var error: NSDictionary?
+        guard let scriptObject = NSAppleScript(source: permissionScript) else {
+            AppLogger.log("Failed to create permission check script for \(appName)", level: .error, category: .windowManager)
+            permissionCache[appName] = false
+            return false
+        }
+        
+        // Execute synchronously to check permission
+        _ = scriptObject.executeAndReturnError(&error)
+        
+        if let error = error {
+            let errorCode = error["NSAppleScriptErrorNumber"] as? Int ?? 0
+            AppLogger.log("Permission check failed for \(appName): error code \(errorCode)", level: .warning, category: .windowManager)
+            
+            // If it's a permission error, cache as denied
+            if errorCode == -1743 {
+                permissionCache[appName] = false
+                AppLogger.log("Automation permission denied for \(appName). User needs to grant access in System Preferences.", level: .warning, category: .windowManager)
+                return false
+            }
+            
+            // Other errors (app not running, etc.) - don't cache, try again next time
+            return false
+        }
+        
+        AppLogger.log("Automation permission granted for \(appName)", level: .info, category: .windowManager)
+        permissionCache[appName] = true
+        return true
+    }
+    
+    private func requestAutomationPermissionSynchronously(for appName: String) -> Bool {
+        AppLogger.log("Synchronously requesting automation permission for \(appName)", level: .info, category: .windowManager)
+        
+        // より明示的な権限リクエストスクリプト
+        let permissionScript = """
+        tell application "\(appName)"
+            activate
+            get name
+        end tell
+        """
+        
+        var error: NSDictionary?
+        guard let scriptObject = NSAppleScript(source: permissionScript) else {
+            AppLogger.log("Failed to create permission check script for \(appName)", level: .error, category: .windowManager)
+            return false
+        }
+        
+        // メインスレッドで同期実行
+        _ = scriptObject.executeAndReturnError(&error)
+        
+        if let error = error {
+            AppLogger.log("Synchronous permission request failed for \(appName): \(error)", level: .warning, category: .windowManager)
+            
+            // If it's a permission error, show user-friendly message
+            if let errorCode = error["NSAppleScriptErrorNumber"] as? Int, errorCode == -1743 {
+                showAutomationPermissionAlert(for: appName)
+            }
+            return false
+        }
+        
+        AppLogger.log("Automation permission granted for \(appName)", level: .info, category: .windowManager)
+        return true
+    }
+    
+    private func showAutomationPermissionAlert(for appName: String) {
+        let alert = NSAlert()
+        alert.messageText = "Automation Permission Required"
+        alert.informativeText = "AppWindowFinder needs permission to access \(appName) tabs. Please go to System Preferences > Security & Privacy > Privacy > Automation and enable AppWindowFinder to control \(appName)."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Preferences")
+        alert.addButton(withTitle: "Cancel")
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            // Open System Preferences to Automation settings
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+    
     // MARK: - Helper Methods
     
     private func getWindowIndex(for windowID: Int, processID: pid_t, appName: String) -> Int? {
@@ -442,6 +721,8 @@ public class WindowManager {
             }
             return appName_window == appName && processID_window == processID
         }
+        
+        AppLogger.log("Found \(windows.count) windows for \(appName) with PID \(processID)", level: .debug, category: .windowManager)
         
         // Sort windows by creation order (or ID) to match AppleScript window order
         let sortedWindows = windows.sorted { window1, window2 in
@@ -455,10 +736,12 @@ public class WindowManager {
         // Find the index (1-based for AppleScript)
         for (index, window) in sortedWindows.enumerated() {
             if let id = window["kCGWindowNumber"] as? Int, id == windowID {
+                AppLogger.log("Window ID \(windowID) maps to index \(index + 1) for \(appName)", level: .debug, category: .windowManager)
                 return index + 1 // AppleScript uses 1-based indexing
             }
         }
         
+        AppLogger.log("Window ID \(windowID) not found in \(appName) windows, using default index 1", level: .debug, category: .windowManager)
         return nil
     }
     
@@ -475,13 +758,15 @@ public class WindowManager {
         // Common error codes
         switch errorCode {
         case -1743: // User denied permission
-            AppLogger.log("User denied permission to access \(browser). Please grant access in System Preferences > Security & Privacy > Privacy > Automation", level: .warning, category: .windowManager)
+            AppLogger.log("⚠️ PERMISSION DENIED: \(browser) requires automation permission. Go to System Preferences > Security & Privacy > Privacy > Automation and enable AppWindowFinder to control \(browser)", level: .error, category: .windowManager)
         case -2700: // Application not found
             AppLogger.log("\(browser) application not found or not running", level: .warning, category: .windowManager)
         case -1728: // Script execution error
             AppLogger.log("Script execution error for \(browser). The application might not support the requested operation", level: .warning, category: .windowManager)
+        case -600: // Application not running
+            AppLogger.log("\(browser) is not running", level: .info, category: .windowManager)
         default:
-            AppLogger.log("Unknown AppleScript error for \(browser): \(errorDescription)", level: .error, category: .windowManager)
+            AppLogger.log("Unknown AppleScript error for \(browser): Code \(errorCode) - \(errorDescription)", level: .error, category: .windowManager)
         }
     }
     
@@ -499,5 +784,47 @@ public class WindowManager {
         default:
             return "Error (\(code)): \(description)"
         }
+    }
+    
+    // MARK: - Browser URL Opening
+    
+    private func openURLInBrowser(url: String, bundleIdentifier: String?) {
+        guard let urlToOpen = URL(string: url) else {
+            AppLogger.log("Invalid URL: \(url)", level: .error, category: .windowManager)
+            return
+        }
+        
+        if let bundleId = bundleIdentifier, !bundleId.isEmpty {
+            // Try to open in specific browser
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = false
+            
+            // Try to get browser application path
+            let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+            if let browserApp = runningApps.first, let appURL = browserApp.bundleURL {
+                NSWorkspace.shared.open([urlToOpen], 
+                                      withApplicationAt: appURL,
+                                      configuration: configuration) { [weak self] app, error in
+                    if let error = error {
+                        AppLogger.log("Failed to open URL \(url) in specific browser: \(error)", level: .warning, category: .windowManager)
+                        // Fallback to default browser
+                        self?.openURLInDefaultBrowser(url: urlToOpen)
+                    } else {
+                        AppLogger.log("Successfully opened URL \(url) in browser", level: .info, category: .windowManager)
+                    }
+                }
+            } else {
+                // Browser not found, fallback to default
+                openURLInDefaultBrowser(url: urlToOpen)
+            }
+        } else {
+            // Open in default browser
+            openURLInDefaultBrowser(url: urlToOpen)
+        }
+    }
+    
+    private func openURLInDefaultBrowser(url: URL) {
+        NSWorkspace.shared.open(url)
+        AppLogger.log("Opened URL \(url) in default browser", level: .info, category: .windowManager)
     }
 }

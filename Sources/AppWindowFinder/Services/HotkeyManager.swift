@@ -5,7 +5,8 @@ import ApplicationServices
 @MainActor
 public class HotkeyManager {
     public static let shared = HotkeyManager()
-    private var monitor: Any?
+    private var localMonitor: Any?
+    private var globalMonitor: Any?
     private var isRegistered = false
     private var currentSettings: HotkeySettings = .default
     
@@ -26,8 +27,15 @@ public class HotkeyManager {
         
         // Use both local and global monitors for better reliability
         let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            AppLogger.log("Local key event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)", level: .debug, category: .hotkeyManager)
-            if event.modifierFlags.contains(self.currentSettings.modifierFlags) && event.keyCode == self.currentSettings.keyCode {
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            
+            // Log all Space key events with modifiers for debugging
+            if event.keyCode == 49 {
+                AppLogger.log("Local Space key: modifiers=\(String(format: "0x%X", modifiers.rawValue)), expected=\(String(format: "0x%X", self.currentSettings.modifierFlags.rawValue))", level: .info, category: .hotkeyManager)
+            }
+            
+            // Check if the hotkey matches
+            if modifiers == self.currentSettings.modifierFlags && event.keyCode == self.currentSettings.keyCode {
                 AppLogger.log("Local hotkey MATCHED - triggering handler", level: .info, category: .hotkeyManager)
                 handler()
                 return nil // Consume the event
@@ -36,8 +44,15 @@ public class HotkeyManager {
         }
         
         let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
-            AppLogger.log("Global key event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)", level: .debug, category: .hotkeyManager)
-            if event.modifierFlags.contains(self.currentSettings.modifierFlags) && event.keyCode == self.currentSettings.keyCode {
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            
+            // Log all Space key events with modifiers for debugging
+            if event.keyCode == 49 {
+                AppLogger.log("Global Space key: modifiers=\(String(format: "0x%X", modifiers.rawValue)), expected=\(String(format: "0x%X", self.currentSettings.modifierFlags.rawValue))", level: .info, category: .hotkeyManager)
+            }
+            
+            // Check if the hotkey matches
+            if modifiers == self.currentSettings.modifierFlags && event.keyCode == self.currentSettings.keyCode {
                 AppLogger.log("Global hotkey MATCHED - triggering handler", level: .info, category: .hotkeyManager)
                 DispatchQueue.main.async {
                     handler()
@@ -46,7 +61,8 @@ public class HotkeyManager {
         }
         
         // Store both monitors
-        monitor = (localMonitor, globalMonitor)
+        self.localMonitor = localMonitor
+        self.globalMonitor = globalMonitor
         isRegistered = true
         
         AppLogger.log("Hotkey registration completed successfully", level: .info, category: .hotkeyManager)
@@ -54,10 +70,15 @@ public class HotkeyManager {
     }
     
     public func unregisterHotkey() {
-        if let monitors = monitor as? (Any, Any) {
-            NSEvent.removeMonitor(monitors.0)
-            NSEvent.removeMonitor(monitors.1)
-            self.monitor = nil
+        if let local = localMonitor {
+            NSEvent.removeMonitor(local)
+            localMonitor = nil
+        }
+        if let global = globalMonitor {
+            NSEvent.removeMonitor(global)
+            globalMonitor = nil
+        }
+        if localMonitor != nil || globalMonitor != nil {
             isRegistered = false
             AppLogger.log("Hotkey unregistered", level: .info, category: .hotkeyManager)
         }
@@ -117,7 +138,7 @@ public class HotkeyManager {
         return [
             "isRegistered": isRegistered,
             "hasAccessibilityPermissions": checkAccessibilityPermissions(),
-            "monitorActive": monitor != nil
+            "monitorActive": (localMonitor != nil || globalMonitor != nil)
         ]
     }
     
@@ -125,7 +146,7 @@ public class HotkeyManager {
     
     public func validateHotkeySetup() -> Bool {
         let hasPermissions = checkAccessibilityPermissions()
-        let isMonitorActive = monitor != nil
+        let isMonitorActive = (localMonitor != nil || globalMonitor != nil)
         
         AppLogger.log("Hotkey setup validation - Permissions: \(hasPermissions), Monitor: \(isMonitorActive)", 
                      level: .info, category: .hotkeyManager)
