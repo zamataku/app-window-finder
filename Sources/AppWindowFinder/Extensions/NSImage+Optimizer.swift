@@ -1,6 +1,8 @@
 import AppKit
 
 extension NSImage {
+    static let optimizedIconSize = NSSize(width: 20, height: 20)
+    
     func resized(to targetSize: NSSize) -> NSImage {
         // すでに目標サイズ以下の場合はそのまま返す
         if size.width <= targetSize.width && size.height <= targetSize.height {
@@ -32,21 +34,28 @@ extension NSImage {
         newImage.unlockFocus()
         return newImage
     }
-}
-
-struct ImageOptimizer {
-    static let iconSize = NSSize(width: 20, height: 20)
     
-    static func optimizeIcon(_ icon: NSImage?) -> NSImage? {
-        guard let icon = icon else { return nil }
-        
+    func optimizedForIcon() -> NSImage {
         // Retina display考慮して2倍サイズまで許容
-        let maxSize = NSSize(width: iconSize.width * 2, height: iconSize.height * 2)
+        let maxSize = NSSize(
+            width: NSImage.optimizedIconSize.width * 2,
+            height: NSImage.optimizedIconSize.height * 2
+        )
         
-        if icon.size.width > maxSize.width || icon.size.height > maxSize.height {
-            return icon.resized(to: maxSize)
+        if size.width > maxSize.width || size.height > maxSize.height {
+            return resized(to: maxSize)
         }
         
-        return icon
+        return self
+    }
+}
+
+// 既存コードとの互換性のため、ImageOptimizer 構造体も残す（非推奨）
+@available(*, deprecated, message: "Use NSImage.optimizedForIcon() instead")
+struct ImageOptimizer {
+    static let iconSize = NSImage.optimizedIconSize
+    
+    static func optimizeIcon(_ icon: NSImage?) -> NSImage? {
+        return icon?.optimizedForIcon()
     }
 }
