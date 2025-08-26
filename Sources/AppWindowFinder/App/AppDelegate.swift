@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
@@ -27,6 +28,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             // Schedule periodic permission checks to register hotkey once granted
             startPermissionWatcher()
+        }
+        
+        // アプリ起動後にブラウザ権限もプリエンプティブにリクエスト
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            WindowManager.shared.requestBrowserPermissions()
         }
     }
     
@@ -55,19 +61,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func startPermissionWatcher() {
         // Check permissions periodically and register hotkey once granted
-        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
-            Task { @MainActor in
-                guard let self = self else { return }
+        _ = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
+            Task { @MainActor [weak self] in
+                guard let self = self else { 
+                    Task { @MainActor in timer.invalidate() }
+                    return 
+                }
                 if AccessibilityHelper.shared.hasAccessibilityPermission() {
                     AppLogger.log("Accessibility permissions granted during runtime, registering hotkey", level: .info, category: .general)
                     self.registerHotkeyWithValidation()
-                    timer.invalidate() // Stop checking once permissions are granted
+                    Task { @MainActor in
+                        timer.invalidate() // Stop checking once permissions are granted
+                    }
                 }
             }
         }
         
         // Show a more prominent guide if permissions are not granted
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             self?.showPermissionGuide()
         }
     }
@@ -94,6 +106,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         menu.addItem(NSMenuItem.separator())
         
+        // Browser permissions
+        let browserPermissionsItem = NSMenuItem(title: "Request Browser Permissions", action: #selector(requestBrowserPermissions), keyEquivalent: "")
+        browserPermissionsItem.target = self
+        menu.addItem(browserPermissionsItem)
+        
         // Settings
         let settingsItem = NSMenuItem(title: "Hotkey Settings...", action: #selector(showHotkeySettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -112,6 +129,84 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
         
         statusItem?.menu = menu
+    }
+    
+    @MainActor
+    @objc private func requestBrowserPermissions() {
+        // AppDelegate から直接 NSAppleScript で実行
+        let supportedBrowsers = ["Google Chrome", "Safari", "Microsoft Edge", "Brave Browser"]
+        let runningApps = NSWorkspace.shared.runningApplications
+        
+        var foundBrowsers: [String] = []
+        var permissionRequested = false
+        
+        for app in runningApps {
+            if let appName = app.localizedName,
+               supportedBrowsers.contains(appName) {
+                foundBrowsers.append(appName)
+                
+                // NSAppleScript を直接使用して AppWindowFinder からのリクエストとして認識させる
+                let script = """
+                tell application "\(appName)"
+                    get name
+                end tell
+                """
+                
+                var error: NSDictionary?
+                guard let scriptObject = NSAppleScript(source: script) else {
+                    AppLogger.log("Failed to create script for \(appName)", level: .error, category: .general)
+                    continue
+                }
+                
+                AppLogger.log("Requesting permission for \(appName) from AppWindowFinder", level: .info, category: .general)
+                let result = scriptObject.executeAndReturnError(&error)
+                
+                if let error = error {
+                    AppLogger.log("Permission request error for \(appName): \(error)", level: .warning, category: .general)
+                    
+                    if let errorCode = error["NSAppleScriptErrorNumber"] as? Int, errorCode == -1743 {
+                        permissionRequested = true
+                        AppLogger.log("Permission denied for \(appName), user should see prompt", level: .info, category: .general)
+                    }
+                } else {
+                    AppLogger.log("Permission granted for \(appName): \(result)", level: .info, category: .general)
+                }
+            }
+        }
+        
+        let alert = NSAlert()
+        alert.messageText = "Browser Permissions"
+        
+        if foundBrowsers.isEmpty {
+            alert.informativeText = """
+            No supported browsers are currently running.
+            
+            Please start browsers (Chrome, Safari, Edge, or Brave) and try again.
+            """
+        } else {
+            let statusMessage = permissionRequested ? 
+                "Permission dialogs should have appeared for some browsers." :
+                "All browsers already have permissions granted."
+            
+            alert.informativeText = """
+            Found running browsers: \(foundBrowsers.joined(separator: ", "))
+            
+            \(statusMessage)
+            
+            Please check System Preferences > Security & Privacy > Privacy > Automation to verify AppWindowFinder has permission to control browsers.
+            """
+        }
+        
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Preferences")
+        alert.addButton(withTitle: "OK")
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
     
     @MainActor

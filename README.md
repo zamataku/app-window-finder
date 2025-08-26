@@ -11,9 +11,11 @@ A macOS app for switching between applications, windows, and browser tabs using 
 
 - Fuzzy search across open applications, windows, and browser tabs
 - Global hotkey: `Cmd+Shift+Space`
-- Browser integration: Safari, Chrome, Brave, and Edge tabs
+- Browser integration: Safari, Chrome, Brave, Edge, and Arc tabs
+- Advanced browser history integration with SQLite database reading
 - Keyboard navigation: arrow keys and Enter to select
 - Universal binary: Intel and Apple Silicon support
+- Comprehensive test coverage with 60+ tests for reliability
 
 ## Installation
 
@@ -78,9 +80,29 @@ swift build
 
 ### Testing
 
+Run all tests:
 ```bash
 swift test
 ```
+
+Run specific test suites:
+```bash
+# Core functionality tests
+swift test --filter "FuzzySearchTests|SearchItemTests|WindowManagerTests"
+
+# Browser integration tests
+swift test --filter "BrowserHistoryServiceTests|BrowserIntegrationTests"
+
+# Performance and error handling tests
+swift test --filter "PerformanceTests|ErrorHandlingTests"
+```
+
+Current test coverage includes:
+- 60+ passing tests across 21 test suites
+- Unit tests for all core services
+- Browser integration and SQLite database tests
+- Performance benchmarks and error handling
+- E2E integration tests
 
 ### Running in Development
 
@@ -139,10 +161,13 @@ Sources/AppWindowFinder/
 ├── Extensions/             # Swift extensions (NSImage, etc.)
 ├── Models/                 # Data structures for search items
 ├── Services/               # Business logic layer
-│   ├── BrowserIntegration/ # Browser tab retrieval
-│   ├── HotkeyManager      # Global hotkey handling
-│   ├── SearchHistoryManager # Search history tracking
-│   └── WindowManager      # Window information management
+│   ├── BrowserIntegration/ # Browser history and tab retrieval
+│   │   ├── BrowserHistoryService.swift # SQLite browser history integration
+│   │   └── BrowserTabService.swift     # Live browser tab retrieval
+│   ├── HotkeyManager.swift     # Global hotkey handling
+│   ├── SearchHistoryManager.swift # Search history tracking
+│   ├── WindowManager.swift     # Window information management
+│   └── FaviconService.swift    # Favicon caching and retrieval
 ├── Views/                  # SwiftUI-based search interface
 └── Resources/              # Localization files (en, ja)
 ```

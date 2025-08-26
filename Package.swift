@@ -19,7 +19,11 @@ let package = Package(
             swiftSettings: [
                 .unsafeFlags(["-parse-as-library"]),
                 .unsafeFlags(["-Xfrontend", "-disable-availability-checking"]),
-                .unsafeFlags(["-Xfrontend", "-warn-concurrency"])
+                .unsafeFlags(["-Xfrontend", "-warn-concurrency"]),
+                .unsafeFlags(["-Xfrontend", "-disable-actor-data-race-checks"])
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
             ]
         ),
         .testTarget(
