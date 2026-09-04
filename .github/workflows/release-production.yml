@@ -28,7 +28,7 @@ env:
 jobs:
   build-and-release:
     name: Universal build and release
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:
@@ -38,7 +38,7 @@ jobs:
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: "16.1"
+        xcode-version: latest-stable
 
     - name: Show build environment
       run: |

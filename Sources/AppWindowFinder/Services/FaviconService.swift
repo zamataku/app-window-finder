@@ -5,7 +5,7 @@ import AppKit
 public class FaviconService: FaviconProviding {
     public static let shared = FaviconService()
     private var faviconCache: [String: NSImage] = [:]
-    private var loadingTasks: [String: Task<Void, Never>] = [:]
+    private var loadingTasks: [String: (token: UUID, task: Task<Void, Never>)] = [:]
     private let defaultFaviconSize = NSSize(width: 16, height: 16)
 
     // Notification for favicon updates
@@ -34,6 +34,7 @@ public class FaviconService: FaviconProviding {
 
         if loadingTasks[urlString] == nil, let host = URL(string: urlString)?.host {
             let task = loadingTask(for: urlString, host: host)
+            // The notification is only needed when we started the load; awaiting it here keeps the caller non-blocking
             Task {
                 await task.value
                 if let favicon = faviconCache[urlString] {
@@ -52,16 +53,23 @@ public class FaviconService: FaviconProviding {
     /// Returns the in-flight download for `urlString`, starting one if needed.
     /// Concurrent callers share a single task so each host is fetched at most once.
     private func loadingTask(for urlString: String, host: String) -> Task<Void, Never> {
-        if let task = loadingTasks[urlString] {
-            return task
+        if let entry = loadingTasks[urlString] {
+            return entry.task
         }
 
+        let token = UUID()
         let task = Task {
-            defer { loadingTasks.removeValue(forKey: urlString) }
+            defer {
+                // A task cancelled by clearCache() must not evict a newer task registered under the same key
+                if loadingTasks[urlString]?.token == token {
+                    loadingTasks.removeValue(forKey: urlString)
+                }
+            }
             for faviconURL in Self.faviconCandidates(for: host) {
                 if Task.isCancelled { return }
                 AppLogger.log("Trying favicon URL: \(faviconURL)", level: .debug, category: .general)
                 if let favicon = await downloadFavicon(from: faviconURL) {
+                    if Task.isCancelled { return }
                     AppLogger.log("Successfully downloaded favicon from \(faviconURL)", level: .debug, category: .general)
                     faviconCache[urlString] = favicon
                     return
@@ -69,7 +77,7 @@ public class FaviconService: FaviconProviding {
                 AppLogger.log("Failed to download favicon from \(faviconURL)", level: .debug, category: .general)
             }
         }
-        loadingTasks[urlString] = task
+        loadingTasks[urlString] = (token, task)
         return task
     }
 
@@ -155,8 +163,8 @@ public class FaviconService: FaviconProviding {
 
     public func clearCache() {
         faviconCache.removeAll()
-        for task in loadingTasks.values {
-            task.cancel()
+        for entry in loadingTasks.values {
+            entry.task.cancel()
         }
         loadingTasks.removeAll()
     }

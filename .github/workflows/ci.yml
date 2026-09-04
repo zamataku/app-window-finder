@@ -22,7 +22,7 @@ jobs:
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: "16.1"
+        xcode-version: latest-stable
 
     - name: Show Swift version
       run: swift --version
@@ -45,7 +45,7 @@ jobs:
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: "16.1"
+        xcode-version: latest-stable
 
     - name: Build release and create app bundle
       run: |
