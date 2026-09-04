@@ -10,11 +10,11 @@ actor AsyncAppleScriptExecutor {
                     continuation.resume(throwing: AppleScriptError.scriptCreationFailed)
                     return
                 }
-                
+
                 let result = script.executeAndReturnError(&error)
-                
+
                 if let error = error {
-                    let nsError = NSError(domain: "com.apple.AppleScript", 
+                    let nsError = NSError(domain: "com.apple.AppleScript",
                                          code: error["NSAppleScriptErrorNumber"] as? Int ?? -1,
                                          userInfo: error as? [String: Any])
                     continuation.resume(throwing: nsError)

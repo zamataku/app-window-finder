@@ -5,78 +5,78 @@ import AppKit
 @MainActor
 public class AppleScriptExecutor: AppleScriptExecuting {
     public static let shared = AppleScriptExecutor()
-    
+
     private init() {}
-    
+
     public func execute(_ script: String) async throws -> String? {
         return try await executeWithTimeout(script, timeout: 10.0)
     }
-    
+
     public func executeWithTimeout(_ script: String, timeout: TimeInterval) async throws -> String? {
         return try await withThrowingTaskGroup(of: String?.self) { group in
             // Add the script execution task
             group.addTask {
                 return try await self.executeScriptInternal(script)
             }
-            
+
             // Add timeout task
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 throw AppWindowFinderError.appleScriptTimeout
             }
-            
+
             // Return the first result (either success or timeout)
             if let result = try await group.next() {
                 group.cancelAll()
                 return result
             }
-            
+
             throw AppWindowFinderError.appleScriptTimeout
         }
     }
-    
+
     private func executeScriptInternal(_ script: String) async throws -> String? {
         return try await Task.detached {
             var error: NSDictionary?
-            
+
             guard let scriptObject = NSAppleScript(source: script) else {
                 throw AppWindowFinderError.appleScriptCompilationFailed(script: script)
             }
-            
+
             let result = scriptObject.executeAndReturnError(&error)
-            
+
             if let error = error {
                 let errorDescription = error.description
                 AppLogger.log("AppleScript execution failed: \(errorDescription)", level: .error, category: .general)
                 throw AppWindowFinderError.appleScriptExecutionFailed(script: script, error: NSError(domain: "AppleScript", code: -1, userInfo: [NSLocalizedDescriptionKey: errorDescription]))
             }
-            
+
             return result.stringValue
         }.value
     }
-    
+
     // MARK: - Convenience Methods for Common Operations
-    
+
     public func activateApplication(_ bundleIdentifier: String) async throws {
         let script = """
         tell application id "\(bundleIdentifier)"
             activate
         end tell
         """
-        
+
         _ = try await execute(script)
     }
-    
+
     public func activateWindowByPID(_ pid: pid_t) async throws {
         let script = """
         tell application "System Events"
             set frontmost of first process whose unix id is \(pid) to true
         end tell
         """
-        
+
         _ = try await execute(script)
     }
-    
+
     public func getSafariTabs() async throws -> [(title: String, url: String, tabIndex: Int)] {
         let script = """
         tell application "Safari"
@@ -91,14 +91,14 @@ public class AppleScriptExecutor: AppleScriptExecuting {
             return tabList
         end tell
         """
-        
+
         guard let result = try await execute(script) else {
             return []
         }
-        
+
         return parseSafariTabsResult(result)
     }
-    
+
     public func getChromeTabs(appName: String = "Google Chrome") async throws -> [(title: String, url: String, tabIndex: Int)] {
         let script = """
         tell application "\(appName)"
@@ -113,14 +113,14 @@ public class AppleScriptExecutor: AppleScriptExecuting {
             return tabList
         end tell
         """
-        
+
         guard let result = try await execute(script) else {
             return []
         }
-        
+
         return parseChromiumTabsResult(result)
     }
-    
+
     public func activateSafariTab(tabIndex: Int, windowIndex: Int = 1) async throws {
         let script = """
         tell application "Safari"
@@ -128,10 +128,10 @@ public class AppleScriptExecutor: AppleScriptExecuting {
             set current tab of window \(windowIndex) to tab \(tabIndex) of window \(windowIndex)
         end tell
         """
-        
+
         _ = try await execute(script)
     }
-    
+
     public func activateChromeTab(tabIndex: Int, windowIndex: Int = 1, appName: String = "Google Chrome") async throws {
         let script = """
         tell application "\(appName)"
@@ -139,10 +139,10 @@ public class AppleScriptExecutor: AppleScriptExecuting {
             set active tab index of window \(windowIndex) to \(tabIndex)
         end tell
         """
-        
+
         _ = try await execute(script)
     }
-    
+
     public func requestAutomationPermission(for bundleIdentifier: String) async -> Bool {
         let script = """
         tell application id "\(bundleIdentifier)"
@@ -154,7 +154,7 @@ public class AppleScriptExecutor: AppleScriptExecuting {
             end try
         end tell
         """
-        
+
         do {
             let result = try await execute(script)
             return result?.contains("true") == true
@@ -162,12 +162,12 @@ public class AppleScriptExecutor: AppleScriptExecuting {
             return false
         }
     }
-    
+
     // MARK: - Private Parsing Methods
-    
+
     private func parseSafariTabsResult(_ result: String) -> [(title: String, url: String, tabIndex: Int)] {
         var tabs: [(title: String, url: String, tabIndex: Int)] = []
-        
+
         // Simple parsing - in production you might want more robust parsing
         let lines = result.components(separatedBy: .newlines)
         for line in lines {
@@ -185,10 +185,10 @@ public class AppleScriptExecutor: AppleScriptExecuting {
                 }
             }
         }
-        
+
         return tabs
     }
-    
+
     private func parseChromiumTabsResult(_ result: String) -> [(title: String, url: String, tabIndex: Int)] {
         // Similar to Safari parsing but might have different format
         return parseSafariTabsResult(result)
@@ -200,20 +200,19 @@ public class AppleScriptExecutor: AppleScriptExecuting {
 extension AppleScriptExecutor {
     public func executeSync(_ script: String) -> AWFResult<String?> {
         var error: NSDictionary?
-        
+
         guard let scriptObject = NSAppleScript(source: script) else {
             return .failure(.appleScriptCompilationFailed(script: script))
         }
-        
+
         let result = scriptObject.executeAndReturnError(&error)
-        
+
         if let error = error {
             let errorDescription = error.description
             AppLogger.log("AppleScript execution failed: \(errorDescription)", level: .error, category: .general)
             return .failure(.appleScriptExecutionFailed(script: script, error: NSError(domain: "AppleScript", code: -1, userInfo: [NSLocalizedDescriptionKey: errorDescription])))
         }
-        
+
         return .success(result.stringValue)
     }
 }
-

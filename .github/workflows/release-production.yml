@@ -15,7 +15,7 @@ on:
 env:
   # Environment variables for code signing
   CERT_BASE64:      ${{ secrets.MACOS_CERTIFICATE }}          # Developer ID Application .p12 (base64-encoded)
-  CERT_PWD:         ${{ secrets.MACOS_CERTIFICATE_PWD }}      
+  CERT_PWD:         ${{ secrets.MACOS_CERTIFICATE_PWD }}
   CERT_NAME:        ${{ secrets.MACOS_CERTIFICATE_NAME }}     # e.g. "Developer ID Application: Your Name (ABCDE12345)"
   KEYCHAIN_PWD:     ${{ secrets.MACOS_CI_KEYCHAIN_PWD }}
   APPLE_ID:         ${{ secrets.APPLE_ID }}
@@ -46,7 +46,7 @@ jobs:
     - name: Build arm64
       run: |
         swift build -c release --arch arm64 --build-path .build-arm64
-        
+
     - name: Build x86_64
       run: |
         swift build -c release --arch x86_64 --build-path .build-x86_64
@@ -54,17 +54,17 @@ jobs:
     - name: Create universal binary
       run: |
         mkdir -p .build-universal
-        
+
         # Copy arm64 binary as base
         cp .build-arm64/release/AppWindowFinder .build-universal/AppWindowFinder-arm64
         cp .build-x86_64/release/AppWindowFinder .build-universal/AppWindowFinder-x86_64
-        
+
         # Create universal binary
         lipo -create \
           .build-universal/AppWindowFinder-arm64 \
           .build-universal/AppWindowFinder-x86_64 \
           -output .build-universal/AppWindowFinder
-        
+
         # Verify
         lipo -info .build-universal/AppWindowFinder
 
@@ -73,21 +73,21 @@ jobs:
       run: |
         APP_NAME="AppWindowFinder"
         APP_DIR="${APP_NAME}.app"
-        
+
         # Create directory structure
         mkdir -p "${APP_DIR}/Contents/MacOS"
         mkdir -p "${APP_DIR}/Contents/Resources"
-        
+
         # Copy executable
         cp .build-universal/AppWindowFinder "${APP_DIR}/Contents/MacOS/"
-        
+
         # Copy app icon if it exists
         if [ -f "Sources/AppWindowFinder/Resources/AppIcon.icns" ]; then
           cp "Sources/AppWindowFinder/Resources/AppIcon.icns" "${APP_DIR}/Contents/Resources/"
         elif [ -f "AppIcon.icns" ]; then
           cp "AppIcon.icns" "${APP_DIR}/Contents/Resources/"
         fi
-        
+
         # Create Info.plist from template
         VERSION="${{ github.ref_name || inputs.version }}"
         BUILD_VERSION="${{ github.sha }}"
@@ -134,18 +134,18 @@ jobs:
       run: |
         # Create zip file for notarization
         ditto -c -k --keepParent AppWindowFinder.app notarize.zip
-        
+
         # Configure notarization profile
         xcrun notarytool store-credentials "ci-profile" \
               --apple-id "$APPLE_ID" \
               --team-id  "$APPLE_TEAM_ID" \
               --password "$APPLE_PWD"
-        
+
         # Execute notarization
         echo "Submitting for notarization..."
         xcrun notarytool submit notarize.zip \
               --keychain-profile "ci-profile" --wait
-        
+
         # Stapling
         echo "Stapling notarization ticket..."
         xcrun stapler staple AppWindowFinder.app
@@ -158,13 +158,13 @@ jobs:
       run: |
         VERSION="${{ github.ref_name || inputs.version }}"
         DMG_NAME="AppWindowFinder-${VERSION}.dmg"
-        
+
         # Create DMG via hdiutil (UDBZ for good compression)
         hdiutil create -volname "App Window Finder ${VERSION}" \
                        -srcfolder AppWindowFinder.app \
                        -ov -format UDBZ \
                        "${DMG_NAME}"
-        
+
         echo "✅ DMG created: ${DMG_NAME}"
         ls -la *.dmg
 
@@ -187,25 +187,25 @@ jobs:
         generate_release_notes: true
         body: |
           ## AppWindowFinder ${{ github.ref_name }}
-          
+
           Universal binary for both Intel and Apple Silicon Macs.
-          
+
           ### Installation
           1. Download the DMG file below
           2. Open the DMG and drag AppWindowFinder to your Applications folder
           3. Launch the app and grant necessary permissions when prompted
-          
+
           ### Usage
           - Press `Command + Shift + Space` to open the window finder
           - Type to search through windows, tabs, and applications
           - Use arrow keys to navigate and Enter to select
-          
+
           ### System Requirements
           - macOS 13.0 or later
           - Universal binary (Intel and Apple Silicon)
-          
+
           ---
-          
+
           🤖 Generated with [Claude Code](https://claude.ai/code)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -223,7 +223,7 @@ jobs:
         echo "- **Version**: ${{ github.ref_name || inputs.version }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Architecture**: Universal (arm64 + x86_64)" >> $GITHUB_STEP_SUMMARY
-        
+
         if [[ -n "$CERT_NAME" ]]; then
           echo "- **Code Signing**: ✅ Developer ID" >> $GITHUB_STEP_SUMMARY
           if [[ -n "$APPLE_ID" ]]; then
@@ -232,9 +232,9 @@ jobs:
         else
           echo "- **Code Signing**: ⚠️ Ad-hoc (development only)" >> $GITHUB_STEP_SUMMARY
         fi
-        
+
         echo "- **DMG**: ✅ Created" >> $GITHUB_STEP_SUMMARY
-        
+
         if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
           echo "- **Release**: ✅ Published to GitHub Releases" >> $GITHUB_STEP_SUMMARY
         fi

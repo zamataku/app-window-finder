@@ -7,10 +7,10 @@ struct SearchView: View {
     @State private var filteredItems: [SearchItem] = []
     @State private var eventMonitor: Any?
     @FocusState private var isSearchFieldFocused: Bool
-    
+
     let onDismiss: () -> Void
     let onSelect: (SearchItem) -> Void
-    
+
     var body: some View {
         VStack(spacing: 0) {
             searchField
@@ -30,12 +30,12 @@ struct SearchView: View {
             isSearchFieldFocused = true
         }
     }
-    
+
     private var searchField: some View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary)
-            
+
             TextField(NSLocalizedString("Search apps, windows, and tabs...", comment: "Search field placeholder"), text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.title2)
@@ -50,7 +50,7 @@ struct SearchView: View {
         }
         .padding()
     }
-    
+
     private var resultsList: some View {
         ScrollViewReader { proxy in
             List(filteredItems.indices, id: \.self) { index in
@@ -85,18 +85,18 @@ struct SearchView: View {
             cleanupEventMonitor()
         }
     }
-    
+
     private func loadItems() {
         allItems = WindowManager.shared.getAllSearchItems()
         // Show all items when search is empty
         filteredItems = searchText.isEmpty ? allItems : FuzzySearch.search(searchText, in: allItems)
     }
-    
+
     private func filterItems(_ query: String) {
         filteredItems = FuzzySearch.search(query, in: allItems)
         selectedIndex = 0
     }
-    
+
     private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
         // Check for Cmd+number shortcuts
         if event.modifierFlags.contains(.command) {
@@ -112,7 +112,7 @@ struct SearchView: View {
                 return nil
             }
         }
-        
+
         switch event.keyCode {
         case 126: // Up arrow
             if selectedIndex > 0 {
@@ -147,23 +147,23 @@ struct SearchView: View {
             return event
         }
     }
-    
+
     private func selectCurrentItem() {
         guard selectedIndex < filteredItems.count else { return }
         let item = filteredItems[selectedIndex]
-        
+
         // Record to usage history
         SearchHistoryManager.shared.recordItemUsage(item)
-        
+
         // Also record search query to history (if not empty)
         if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             SearchHistoryManager.shared.recordSearchQuery(searchText)
         }
-        
+
         onSelect(item)
         onDismiss()
     }
-    
+
     private func cleanupEventMonitor() {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
@@ -175,7 +175,7 @@ struct SearchView: View {
 struct SearchItemRow: View {
     let item: SearchItem
     let isSelected: Bool
-    
+
     var body: some View {
         HStack {
             if let icon = item.icon {
@@ -188,18 +188,18 @@ struct SearchItemRow: View {
                     .foregroundColor(.accentColor)
                     .frame(width: 20, height: 20)
             }
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .lineLimit(1)
                     .font(.body)
-                
+
                 Text(item.subtitle)
                     .lineLimit(1)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
         }
         .padding(.horizontal, 10)
@@ -209,7 +209,7 @@ struct SearchItemRow: View {
         .accessibilityLabel(accessibilityLabelText)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
-    
+
     private var accessibilityLabelText: String {
         let typeLabel: String
         switch item.type {
@@ -222,10 +222,10 @@ struct SearchItemRow: View {
         case .browserTab:
             typeLabel = NSLocalizedString("Browser Tab", comment: "Accessibility label for browser tab type")
         }
-        
+
         return "\(typeLabel): \(item.title), \(item.subtitle)"
     }
-    
+
     private var iconName: String {
         switch item.type {
         case .app:

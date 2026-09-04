@@ -87,77 +87,77 @@ extension SearchHistoryManager: SearchHistoryManaging {}
 @MainActor
 public class ServiceContainer {
     public static let shared = ServiceContainer()
-    
+
     private var services: [String: Any] = [:]
-    
+
     private init() {
         registerDefaultServices()
     }
-    
+
     // MARK: - Registration
-    
+
     public func register<T>(_ type: T.Type, factory: @escaping () -> T) {
         let key = String(describing: type)
         services[key] = factory
     }
-    
+
     public func register<T>(_ type: T.Type, instance: T) {
         let key = String(describing: type)
         services[key] = instance
     }
-    
+
     // MARK: - Resolution
-    
+
     public func resolve<T>(_ type: T.Type) -> T {
         let key = String(describing: type)
-        
+
         if let factory = services[key] as? () -> T {
             return factory()
         }
-        
+
         if let instance = services[key] as? T {
             return instance
         }
-        
+
         fatalError("Service of type \(type) not registered")
     }
-    
+
     public func resolveOptional<T>(_ type: T.Type) -> T? {
         let key = String(describing: type)
-        
+
         if let factory = services[key] as? () -> T {
             return factory()
         }
-        
+
         if let instance = services[key] as? T {
             return instance
         }
-        
+
         return nil
     }
-    
+
     // MARK: - Default Service Registration
-    
+
     private func registerDefaultServices() {
         // Browser services
         register(BrowserHistoryProviding.self, instance: BrowserHistoryService.shared)
         register(FaviconProviding.self, instance: FaviconService.shared)
-        
+
         // Search services
         register(SearchHistoryManaging.self, instance: SearchHistoryManager.shared)
-        
+
         // AppleScript services
         register(AppleScriptExecuting.self, instance: AppleScriptExecutor.shared)
-        
+
         // Note: Logging is static, no need to register
     }
-    
+
     // MARK: - Testing Support
-    
+
     public func removeAll() {
         services.removeAll()
     }
-    
+
     public func registerMock<T>(_ type: T.Type, mock: T) {
         register(type, instance: mock)
     }
@@ -176,15 +176,15 @@ extension ServiceContainer: ServiceLocating {
     public func getBrowserHistoryService() -> BrowserHistoryProviding {
         return resolve(BrowserHistoryProviding.self)
     }
-    
+
     public func getFaviconService() -> FaviconProviding {
         return resolve(FaviconProviding.self)
     }
-    
+
     public func getSearchHistoryManager() -> SearchHistoryManaging {
         return resolve(SearchHistoryManaging.self)
     }
-    
+
     public func getAppleScriptExecutor() -> AppleScriptExecuting {
         return resolve(AppleScriptExecuting.self)
     }

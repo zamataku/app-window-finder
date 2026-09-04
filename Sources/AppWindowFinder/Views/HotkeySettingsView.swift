@@ -8,28 +8,28 @@ public struct HotkeySettingsView: View {
     @State private var recordedKeyCode: UInt16?
     @State private var recordedModifiers: NSEvent.ModifierFlags = []
     @Environment(\.dismiss) private var dismiss
-    
+
     private let onSettingsChanged: (HotkeySettings) -> Void
-    
+
     public init(currentSettings: HotkeySettings, onSettingsChanged: @escaping (HotkeySettings) -> Void) {
         self._currentSettings = State(initialValue: currentSettings)
         self.onSettingsChanged = onSettingsChanged
     }
-    
+
     public var body: some View {
         VStack(spacing: 20) {
             Text("Hotkey Settings")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
             VStack(alignment: .leading, spacing: 12) {
                 Text("Current Hotkey")
                     .font(.headline)
-                
+
                 HStack {
                     Text("Press:")
                         .foregroundColor(.secondary)
-                    
+
                     Text(currentSettings.displayString)
                         .font(.title3)
                         .fontWeight(.medium)
@@ -37,15 +37,15 @@ public struct HotkeySettingsView: View {
                         .padding(.vertical, 6)
                         .background(Color.blue.opacity(0.1))
                         .cornerRadius(8)
-                    
+
                     Spacer()
                 }
             }
-            
+
             VStack(alignment: .leading, spacing: 12) {
                 Text("Record New Hotkey")
                     .font(.headline)
-                
+
                 Button(action: startRecording) {
                     HStack {
                         if isRecording {
@@ -59,7 +59,7 @@ public struct HotkeySettingsView: View {
                             Text("Click to record new hotkey")
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         Spacer()
                     }
                     .padding()
@@ -68,7 +68,7 @@ public struct HotkeySettingsView: View {
                 }
                 .buttonStyle(.plain)
             }
-            
+
             HStack(spacing: 12) {
                 Button("Reset to Default") {
                     recordedKeyCode = nil
@@ -76,13 +76,13 @@ public struct HotkeySettingsView: View {
                     currentSettings = .default
                 }
                 .foregroundColor(.orange)
-                
+
                 Spacer()
-                
+
                 Button("Cancel") {
                     dismiss()
                 }
-                
+
                 Button("Apply") {
                     applySettings()
                 }
@@ -93,14 +93,14 @@ public struct HotkeySettingsView: View {
         .padding(24)
         .frame(width: 400, height: 280)
     }
-    
+
     private func startRecording() {
         isRecording = true
         recordedKeyCode = nil
         recordedModifiers = []
-        
+
         var eventMonitor: Any?
-        
+
         // Start monitoring key events
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             if event.type == .keyDown {
@@ -114,7 +114,7 @@ public struct HotkeySettingsView: View {
             }
             return event
         }
-        
+
         // Timeout after 10 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
             if isRecording {
@@ -125,16 +125,16 @@ public struct HotkeySettingsView: View {
             }
         }
     }
-    
+
     private func applySettings() {
         let finalSettings: HotkeySettings
-        
+
         if let keyCode = recordedKeyCode {
             finalSettings = HotkeySettings(keyCode: keyCode, modifierFlags: recordedModifiers)
         } else {
             finalSettings = currentSettings
         }
-        
+
         onSettingsChanged(finalSettings)
         dismiss()
     }

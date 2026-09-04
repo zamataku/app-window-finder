@@ -9,20 +9,20 @@ on:
 jobs:
   test:
     runs-on: macos-latest
-    
+
     steps:
     - uses: actions/checkout@v4
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: "16.1"
-    
+
     - name: Show Swift version
       run: swift --version
-    
+
     - name: Build debug
       run: swift build -v
-    
+
     - name: Run tests
       run: |
         # Run stable CI tests (fail on error)
@@ -32,19 +32,19 @@ jobs:
   build:
     runs-on: macos-latest
     needs: test
-    
+
     steps:
     - uses: actions/checkout@v4
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: "16.1"
-    
+
     - name: Build release and create app bundle
       run: |
         chmod +x build-and-package.sh
         ./build-and-package.sh
-    
+
     - name: Verify build outputs
       run: |
         echo "✅ Build verification:"
