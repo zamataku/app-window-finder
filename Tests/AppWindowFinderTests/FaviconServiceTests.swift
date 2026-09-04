@@ -132,13 +132,13 @@ struct FaviconServiceTests {
         let endTime2 = CFAbsoluteTimeGetCurrent()
         let cacheTime = endTime2 - startTime2
 
-        // In CI/test environments, network requests may fail - this is acceptable
-        print("ℹ️ Cache test results: icon1=\(icon1 != nil), icon2=\(icon2 != nil)")
-        if icon1 != nil && icon2 != nil {
-            print("✓ Cache test successful")
-        } else {
-            print("⚠️ Network test failed in CI environment - acceptable")
+        // Without network access nothing is cached, so the timing comparison only holds after a successful fetch
+        guard let icon1 else {
+            print("⚠️ Network unavailable in test environment - skipping cache timing assertion")
+            return
         }
+        #expect(icon2 != nil, "Second lookup should be served from cache")
+        #expect(icon2?.size == icon1.size, "Cached icon should match the fetched icon")
         #expect(cacheTime < fetchTime * 0.5, "Cached access should be significantly faster")
     }
 
