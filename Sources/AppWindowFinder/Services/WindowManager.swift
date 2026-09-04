@@ -10,8 +10,6 @@ public class WindowManager: WindowManaging {
     // Dependencies
     private let browserHistoryService: BrowserHistoryProviding
     private let faviconService: FaviconProviding
-    private let appleScriptExecutor: AppleScriptExecuting
-    private let container: ServiceContainer
 
     private var cachedItems: [SearchItem]?
     private var lastCacheTime: Date?
@@ -28,16 +26,9 @@ public class WindowManager: WindowManaging {
     }
 
     // Dependency injection initializer
-    public init(container: ServiceContainer = ServiceContainer.shared) {
-        self.container = container
+    public init(container: ServiceContainer) {
         self.browserHistoryService = container.getBrowserHistoryService()
         self.faviconService = container.getFaviconService()
-        self.appleScriptExecutor = container.getAppleScriptExecutor()
-
-        // アプリ起動時にブラウザ権限をプリエンプティブにチェック
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            self.preemptivelyRequestBrowserPermissions()
-        }
     }
 
     public func refreshWindows() {
@@ -53,26 +44,11 @@ public class WindowManager: WindowManaging {
     }
 
     public func activateWindow(_ item: SearchItem) async -> Bool {
-        switch item.type {
-        case .window:
-            activateWindow(windowID: item.windowID)
-            return true
-        case .app:
-            if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == item.bundleIdentifier }) {
-                app.activate(options: [])
-            }
-            return true
-        case .tab:
-            activateTab(appName: item.appName, tabIndex: 0) // Simplified for now
-            return true
-        case .browserTab:
-            // For browser tabs, we could open the URL in a new tab
-            if let urlString = item.url, let url = URL(string: urlString) {
-                NSWorkspace.shared.open(url)
-                return true
-            }
+        if item.type == .browserTab, item.url.flatMap(URL.init(string:)) == nil {
             return false
         }
+        activateItem(item)
+        return true
     }
 
     public func getAllSearchItems() -> [SearchItem] {
@@ -123,7 +99,7 @@ public class WindowManager: WindowManaging {
 
             // Get application icon and optimize
             let app = NSRunningApplication(processIdentifier: processID)
-            let icon = ImageOptimizer.optimizeIcon(app?.icon)
+            let icon = app?.icon?.optimizedForIcon()
 
             // Determine title and subtitle based on window title availability
             let itemTitle: String
@@ -219,7 +195,7 @@ public class WindowManager: WindowManaging {
                                     url.deletingPathExtension().lastPathComponent as String? {
 
                         // Get app icon and optimize
-                        let icon = ImageOptimizer.optimizeIcon(workspace.icon(forFile: url.path))
+                        let icon = workspace.icon(forFile: url.path).optimizedForIcon()
 
                         // Create application item
                         let appItem = SearchItem(
@@ -273,7 +249,7 @@ public class WindowManager: WindowManaging {
 
         let app = NSRunningApplication(processIdentifier: processID)
         guard let originalIcon = app?.icon else { return nil }
-        let appIcon = ImageOptimizer.optimizeIcon(originalIcon) ?? originalIcon
+        let appIcon = originalIcon.optimizedForIcon()
 
         var tabs: [SearchItem] = []
 
@@ -330,6 +306,7 @@ public class WindowManager: WindowManaging {
 
         var tabs: [SearchItem] = []
         let count = result.numberOfItems
+        guard count > 0 else { return [] }
 
         for i in 1...count {
             guard let tabInfo = result.atIndex(i),
@@ -346,73 +323,6 @@ public class WindowManager: WindowManaging {
                 subtitle: "Safari - \(tabURL)",
                 type: .tab,
                 appName: "Safari",
-                windowID: windowID,
-                tabIndex: Int(tabIndex) - 1,
-                processID: processID,
-                icon: favicon,
-                tabURL: tabURL
-            )
-            tabs.append(tab)
-        }
-
-        return tabs
-    }
-
-    private func getArcTabs(windowID: Int, processID: pid_t, icon: NSImage) -> [SearchItem] {
-        // Get window index based on windowID
-        let windowIndex = getWindowIndex(for: windowID, processID: processID, appName: "Arc") ?? 1
-
-        AppLogger.log("Getting Arc tabs for windowID: \(windowID), windowIndex: \(windowIndex)", level: .debug, category: .windowManager)
-
-        let script = """
-        tell application "Arc"
-            set tabList to {}
-            if (count of windows) >= \(windowIndex) then
-                set w to window \(windowIndex)
-                set tabCount to count of tabs of w
-                repeat with i from 1 to tabCount
-                    set t to tab i of w
-                    set tabTitle to title of t
-                    set tabURL to URL of t
-                    set end of tabList to {i, tabTitle, tabURL}
-                end repeat
-            end if
-            return tabList
-        end tell
-        """
-
-        var error: NSDictionary?
-        guard let scriptObject = NSAppleScript(source: script) else {
-            AppLogger.log("Failed to create AppleScript object for Arc tabs", level: .error, category: .windowManager)
-            return []
-        }
-
-        let result = scriptObject.executeAndReturnError(&error)
-        if let error = error {
-            handleAppleScriptError(error as? NSError, browser: "Arc")
-            return []
-        }
-
-        var tabs: [SearchItem] = []
-        let count = result.numberOfItems
-
-        AppLogger.log("Got \(count) tabs from Arc window \(windowIndex)", level: .debug, category: .windowManager)
-
-        for i in 1...count {
-            guard let tabInfo = result.atIndex(i),
-                  tabInfo.numberOfItems >= 3,
-                  let tabIndex = tabInfo.atIndex(1)?.int32Value,
-                  let tabTitle = tabInfo.atIndex(2)?.stringValue,
-                  let tabURL = tabInfo.atIndex(3)?.stringValue else {
-                continue
-            }
-
-            let favicon = faviconService.getFaviconNonBlocking(for: tabURL, fallbackIcon: icon)
-            let tab = SearchItem(
-                title: tabTitle.isEmpty ? "Untitled Tab" : tabTitle,
-                subtitle: "Arc - \(tabURL)",
-                type: .tab,
-                appName: "Arc",
                 windowID: windowID,
                 tabIndex: Int(tabIndex) - 1,
                 processID: processID,
@@ -465,7 +375,7 @@ public class WindowManager: WindowManaging {
 
         AppLogger.log("Got \(count) tabs from \(appName) window \(windowIndex) (windowID: \(windowID))", level: .debug, category: .windowManager)
 
-        if count == 0 {
+        guard count > 0 else {
             AppLogger.log("No tabs returned from AppleScript for \(appName)", level: .warning, category: .windowManager)
             return []
         }
@@ -804,11 +714,12 @@ public class WindowManager: WindowManaging {
             if let browserApp = runningApps.first, let appURL = browserApp.bundleURL {
                 NSWorkspace.shared.open([urlToOpen],
                                       withApplicationAt: appURL,
-                                      configuration: configuration) { [weak self] app, error in
+                                      configuration: configuration) { [weak self] _, error in
                     if let error = error {
                         AppLogger.log("Failed to open URL \(url) in specific browser: \(error)", level: .warning, category: .windowManager)
-                        // Fallback to default browser
-                        self?.openURLInDefaultBrowser(url: urlToOpen)
+                        Task { @MainActor in
+                            self?.openURLInDefaultBrowser(url: urlToOpen)
+                        }
                     } else {
                         AppLogger.log("Successfully opened URL \(url) in browser", level: .info, category: .windowManager)
                     }

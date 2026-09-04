@@ -5,6 +5,7 @@ import AppKit
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
+    private var permissionWatcher: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -61,18 +62,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startPermissionWatcher() {
         // Check permissions periodically and register hotkey once granted
-        _ = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
+        permissionWatcher?.invalidate()
+        permissionWatcher = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self = self else {
-                    Task { @MainActor in timer.invalidate() }
-                    return
-                }
+                guard let self = self else { return }
                 if AccessibilityHelper.shared.hasAccessibilityPermission() {
                     AppLogger.log("Accessibility permissions granted during runtime, registering hotkey", level: .info, category: .general)
+                    self.permissionWatcher?.invalidate()
+                    self.permissionWatcher = nil
                     self.registerHotkeyWithValidation()
-                    Task { @MainActor in
-                        timer.invalidate() // Stop checking once permissions are granted
-                    }
                 }
             }
         }
@@ -85,6 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        permissionWatcher?.invalidate()
         HotkeyManager.shared.unregisterHotkey()
     }
 
@@ -247,8 +246,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "AppWindowFinder"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         alert.informativeText = """
-        Version 1.0.0
+        Version \(version)
 
         A powerful macOS app for quickly switching between applications, windows, and browser tabs using intelligent fuzzy search.
 

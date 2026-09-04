@@ -49,13 +49,3 @@ extension NSImage {
         return self
     }
 }
-
-// 既存コードとの互換性のため、ImageOptimizer 構造体も残す（非推奨）
-@available(*, deprecated, message: "Use NSImage.optimizedForIcon() instead")
-struct ImageOptimizer {
-    static let iconSize = NSImage.optimizedIconSize
-
-    static func optimizeIcon(_ icon: NSImage?) -> NSImage? {
-        return icon?.optimizedForIcon()
-    }
-}

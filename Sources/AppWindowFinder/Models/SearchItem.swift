@@ -37,7 +37,7 @@ public struct SearchItem: Identifiable, Equatable {
         appPath: String? = nil,
         tabURL: String? = nil,
         url: String? = nil,
-        lastAccessTime: Date = Date(timeIntervalSince1970: min(Date().timeIntervalSince1970, 1893456000.0)) // Cap at 2030-01-01
+        lastAccessTime: Date = Date()
     ) {
         self.title = title
         self.subtitle = subtitle

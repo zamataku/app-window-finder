@@ -17,10 +17,7 @@ let package = Package(
             name: "AppWindowFinder",
             dependencies: [],
             swiftSettings: [
-                .unsafeFlags(["-parse-as-library"]),
-                .unsafeFlags(["-Xfrontend", "-disable-availability-checking"]),
-                .unsafeFlags(["-Xfrontend", "-warn-concurrency"]),
-                .unsafeFlags(["-Xfrontend", "-disable-actor-data-race-checks"])
+                .unsafeFlags(["-parse-as-library"])
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3")

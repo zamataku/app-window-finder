@@ -37,46 +37,6 @@ public protocol SearchHistoryManaging {
     func clearAllData()
 }
 
-// MARK: - Cache Management Protocols
-
-public protocol CacheManaging {
-    associatedtype Value
-    func get() -> Value?
-    func set(_ value: Value)
-    func clear()
-    func isExpired() -> Bool
-}
-
-// MARK: - Logging Protocols
-
-public protocol LoggingProviding {
-    static func log(_ message: String, level: LogLevel, category: LogCategory)
-    static func logError(_ error: Error, context: String, category: LogCategory)
-}
-
-// MARK: - AppleScript Execution Protocols
-
-public protocol AppleScriptExecuting {
-    func execute(_ script: String) async throws -> String?
-    func executeWithTimeout(_ script: String, timeout: TimeInterval) async throws -> String?
-}
-
-// MARK: - Permissions Protocols
-
-public protocol PermissionChecking {
-    func hasAccessibilityPermission() -> Bool
-    func requestAccessibilityPermission() -> Bool
-    func hasAutomationPermission() -> Bool
-}
-
-// MARK: - Hotkey Management Protocols
-
-public protocol HotkeyManaging {
-    func registerHotkey(settings: HotkeySettings, callback: @escaping () -> Void) -> Bool
-    func unregisterHotkey()
-    func isHotkeyRegistered() -> Bool
-}
-
 // MARK: - Default Implementations for Protocols
 
 extension BrowserHistoryService: BrowserHistoryProviding {}
@@ -145,11 +105,6 @@ public class ServiceContainer {
 
         // Search services
         register(SearchHistoryManaging.self, instance: SearchHistoryManager.shared)
-
-        // AppleScript services
-        register(AppleScriptExecuting.self, instance: AppleScriptExecutor.shared)
-
-        // Note: Logging is static, no need to register
     }
 
     // MARK: - Testing Support
@@ -183,9 +138,5 @@ extension ServiceContainer: ServiceLocating {
 
     public func getSearchHistoryManager() -> SearchHistoryManaging {
         return resolve(SearchHistoryManaging.self)
-    }
-
-    public func getAppleScriptExecutor() -> AppleScriptExecuting {
-        return resolve(AppleScriptExecuting.self)
     }
 }

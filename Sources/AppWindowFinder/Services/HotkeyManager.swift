@@ -70,6 +70,7 @@ public class HotkeyManager {
     }
 
     public func unregisterHotkey() {
+        guard localMonitor != nil || globalMonitor != nil else { return }
         if let local = localMonitor {
             NSEvent.removeMonitor(local)
             localMonitor = nil
@@ -78,10 +79,8 @@ public class HotkeyManager {
             NSEvent.removeMonitor(global)
             globalMonitor = nil
         }
-        if localMonitor != nil || globalMonitor != nil {
-            isRegistered = false
-            AppLogger.log("Hotkey unregistered", level: .info, category: .hotkeyManager)
-        }
+        isRegistered = false
+        AppLogger.log("Hotkey unregistered", level: .info, category: .hotkeyManager)
     }
 
     // MARK: - Accessibility Permissions

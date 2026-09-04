@@ -5,7 +5,7 @@ import AppKit
 public class FaviconService: FaviconProviding {
     public static let shared = FaviconService()
     private var faviconCache: [String: NSImage] = [:]
-    private nonisolated(unsafe) var loadingTasks: [String: Task<NSImage?, Never>] = [:]
+    private var loadingTasks: [String: Task<Void, Never>] = [:]
     private let defaultFaviconSize = NSSize(width: 16, height: 16)
 
     // Notification for favicon updates
@@ -14,64 +14,29 @@ public class FaviconService: FaviconProviding {
     private init() {}
 
     public func getFavicon(for urlString: String, fallbackIcon: NSImage? = nil) async -> NSImage? {
-        // Check cache first
         if let cached = faviconCache[urlString] {
             return cached
         }
 
-        // Check if already loading
-        if let task = loadingTasks[urlString] {
-            return await task.value
-        }
-
-        guard let url = URL(string: urlString),
-              let host = url.host else {
+        guard let host = URL(string: urlString)?.host else {
             return fallbackIcon
         }
 
-        // Start loading task
-        let task = Task { () -> NSImage? in
-            // Try Google favicon service first (faster and more reliable)
-            let faviconURLs = [
-                "https://www.google.com/s2/favicons?domain=\(host)&sz=32",
-                "https://icons.duckduckgo.com/ip3/\(host).ico",
-                "https://\(host)/favicon.ico"
-            ]
-
-            for faviconURLString in faviconURLs {
-                AppLogger.log("Trying favicon URL: \(faviconURLString)", level: .debug, category: .general)
-                if let faviconURL = URL(string: faviconURLString),
-                   let favicon = await downloadFavicon(from: faviconURL) {
-                    // Cache the favicon
-                    AppLogger.log("Successfully downloaded favicon from \(faviconURLString)", level: .debug, category: .general)
-                    faviconCache[urlString] = favicon
-                    loadingTasks.removeValue(forKey: urlString)
-                    return favicon
-                } else {
-                    AppLogger.log("Failed to download favicon from \(faviconURLString)", level: .debug, category: .general)
-                }
-            }
-
-            loadingTasks.removeValue(forKey: urlString)
-            return fallbackIcon
-        }
-
-        loadingTasks[urlString] = task
-        return await task.value
+        await loadingTask(for: urlString, host: host).value
+        return faviconCache[urlString] ?? fallbackIcon
     }
 
     // Non-blocking version - returns cached or generic icon immediately, loads in background
     public func getFaviconNonBlocking(for urlString: String, fallbackIcon: NSImage? = nil) -> NSImage? {
-        // Check cache first
         if let cached = faviconCache[urlString] {
             return cached
         }
 
-        // Start async loading in background if not already loading
-        if loadingTasks[urlString] == nil {
+        if loadingTasks[urlString] == nil, let host = URL(string: urlString)?.host {
+            let task = loadingTask(for: urlString, host: host)
             Task {
-                if let favicon = await getFavicon(for: urlString, fallbackIcon: fallbackIcon) {
-                    // Post notification when favicon is loaded
+                await task.value
+                if let favicon = faviconCache[urlString] {
                     NotificationCenter.default.post(
                         name: Self.faviconDidUpdateNotification,
                         object: self,
@@ -81,8 +46,41 @@ public class FaviconService: FaviconProviding {
             }
         }
 
-        // Return fallback or generic icon immediately (non-blocking)
         return fallbackIcon ?? createGenericWebIcon()
+    }
+
+    /// Returns the in-flight download for `urlString`, starting one if needed.
+    /// Concurrent callers share a single task so each host is fetched at most once.
+    private func loadingTask(for urlString: String, host: String) -> Task<Void, Never> {
+        if let task = loadingTasks[urlString] {
+            return task
+        }
+
+        let task = Task {
+            defer { loadingTasks.removeValue(forKey: urlString) }
+            for faviconURL in Self.faviconCandidates(for: host) {
+                if Task.isCancelled { return }
+                AppLogger.log("Trying favicon URL: \(faviconURL)", level: .debug, category: .general)
+                if let favicon = await downloadFavicon(from: faviconURL) {
+                    AppLogger.log("Successfully downloaded favicon from \(faviconURL)", level: .debug, category: .general)
+                    faviconCache[urlString] = favicon
+                    return
+                }
+                AppLogger.log("Failed to download favicon from \(faviconURL)", level: .debug, category: .general)
+            }
+        }
+        loadingTasks[urlString] = task
+        return task
+    }
+
+    /// Lookup order: Google's favicon service, DuckDuckGo's, then the site itself.
+    /// Only the hostname leaves the machine, never the full URL.
+    private static func faviconCandidates(for host: String) -> [URL] {
+        return [
+            "https://www.google.com/s2/favicons?domain=\(host)&sz=32",
+            "https://icons.duckduckgo.com/ip3/\(host).ico",
+            "https://\(host)/favicon.ico"
+        ].compactMap(URL.init(string:))
     }
 
     private func createGenericWebIcon() -> NSImage {
