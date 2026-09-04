@@ -12,6 +12,7 @@ xcuserdata/
 # Swift Package Manager
 .swiftpm/
 .build/
+.build-*/
 Packages/
 *.xcworkspace
 

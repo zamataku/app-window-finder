@@ -12,6 +12,9 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write
+
 env:
   # Environment variables for code signing
   CERT_BASE64:      ${{ secrets.MACOS_CERTIFICATE }}          # Developer ID Application .p12 (base64-encoded)
@@ -41,6 +44,9 @@ jobs:
       run: |
         swift --version
         xcodebuild -version
+
+    - name: Run tests
+      run: swift test --filter "CICDTests|FuzzySearchTests|SearchItemTests|BrowserHistoryServiceTests|FaviconServiceTests"
 
     # 1. Universal binary build
     - name: Build arm64
@@ -88,9 +94,10 @@ jobs:
           cp "AppIcon.icns" "${APP_DIR}/Contents/Resources/"
         fi
 
-        # Create Info.plist from template
+        # Create Info.plist from template (CFBundleShortVersionString must not carry the "v" prefix)
         VERSION="${{ github.ref_name || inputs.version }}"
-        BUILD_VERSION="${{ github.sha }}"
+        VERSION="${VERSION#v}"
+        BUILD_VERSION="${{ github.run_number }}"
         MIN_OS="13.0"
         sed \
           -e "s|\${APP_NAME}|${APP_NAME}|g" \
@@ -203,20 +210,10 @@ jobs:
           ### System Requirements
           - macOS 13.0 or later
           - Universal binary (Intel and Apple Silicon)
-
-          ---
-
-          🤖 Generated with [Claude Code](https://claude.ai/code)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 9. Run tests
-    - name: Run tests
-      run: |
-        swift test --filter "FuzzySearchTests|SearchItemTests"
-        echo "✅ Tests completed"
-
-    # 10. Build information output
+    # 9. Build information output
     - name: Build summary
       run: |
         echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
