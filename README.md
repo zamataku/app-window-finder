@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/zamataku/app-window-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/zamataku/app-window-finder/actions/workflows/ci.yml)
 [![Release](https://github.com/zamataku/app-window-finder/actions/workflows/release-production.yml/badge.svg)](https://github.com/zamataku/app-window-finder/actions/workflows/release-production.yml)
-[![Swift](https://img.shields.io/badge/Swift-6.1-orange.svg)](https://swift.org)
+[![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-macOS%2013.0+-blue.svg)](https://www.apple.com/macos/)
 
 A macOS app for switching between applications, windows, and browser tabs using fuzzy search.

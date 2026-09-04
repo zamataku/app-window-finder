@@ -32,8 +32,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Select Xcode version
-      run: sudo xcode-select -s /Applications/Xcode_16.1.app
+    - name: Set up Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: "16.1"
 
     - name: Show build environment
       run: |
@@ -80,47 +82,23 @@ jobs:
         cp .build-universal/AppWindowFinder "${APP_DIR}/Contents/MacOS/"
         
         # Copy app icon if it exists
-        if [ -f "AppIcon.icns" ]; then
+        if [ -f "Sources/AppWindowFinder/Resources/AppIcon.icns" ]; then
+          cp "Sources/AppWindowFinder/Resources/AppIcon.icns" "${APP_DIR}/Contents/Resources/"
+        elif [ -f "AppIcon.icns" ]; then
           cp "AppIcon.icns" "${APP_DIR}/Contents/Resources/"
         fi
         
-        # Create Info.plist
-        cat > "${APP_DIR}/Contents/Info.plist" << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>CFBundleExecutable</key>
-            <string>AppWindowFinder</string>
-            <key>CFBundleIdentifier</key>
-            <string>io.github.appwindowfinder</string>
-            <key>CFBundleName</key>
-            <string>AppWindowFinder</string>
-            <key>CFBundleDisplayName</key>
-            <string>App Window Finder</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>CFBundleShortVersionString</key>
-            <string>${{ github.ref_name || inputs.version }}</string>
-            <key>CFBundleVersion</key>
-            <string>${{ github.sha }}</string>
-            <key>LSMinimumSystemVersion</key>
-            <string>13.0</string>
-            <key>LSUIElement</key>
-            <true/>
-            <key>CFBundleIconFile</key>
-            <string>AppIcon</string>
-            <key>NSAppleEventsUsageDescription</key>
-            <string>AppWindowFinder needs to access browser tabs to display them in the window list.</string>
-            <key>NSHumanReadableCopyright</key>
-            <string>Copyright © 2025 AppWindowFinder Contributors. All rights reserved.</string>
-            <key>LSApplicationCategoryType</key>
-            <string>public.app-category.productivity</string>
-            <key>NSHighResolutionCapable</key>
-            <true/>
-        </dict>
-        </plist>
-        EOF
+        # Create Info.plist from template
+        VERSION="${{ github.ref_name || inputs.version }}"
+        BUILD_VERSION="${{ github.sha }}"
+        MIN_OS="13.0"
+        sed \
+          -e "s|\${APP_NAME}|${APP_NAME}|g" \
+          -e "s|\${BUNDLE_ID}|io.github.appwindowfinder|g" \
+          -e "s|\${VERSION}|${VERSION}|g" \
+          -e "s|\${BUILD_VERSION}|${BUILD_VERSION}|g" \
+          -e "s|\${MIN_OS}|${MIN_OS}|g" \
+          Sources/AppWindowFinder/Resources/Info.plist.template > "${APP_DIR}/Contents/Info.plist"
 
     # 3. Code signing preparation (only when developer certificate is configured)
     - name: Import code-sign certificate
@@ -174,34 +152,18 @@ jobs:
         echo "✅ Notarization completed"
 
     # 6. DMG creation
-    - name: Install create-dmg
-      run: brew install create-dmg
+    # Removed create-dmg dependency; use hdiutil with fallback already present
 
     - name: Create DMG
       run: |
         VERSION="${{ github.ref_name || inputs.version }}"
         DMG_NAME="AppWindowFinder-${VERSION}.dmg"
         
-        create-dmg \
-          --volname "App Window Finder ${VERSION}" \
-          --window-pos 200 120 \
-          --window-size 800 400 \
-          --icon-size 100 \
-          --icon "AppWindowFinder.app" 200 190 \
-          --hide-extension "AppWindowFinder.app" \
-          --app-drop-link 600 185 \
-          --format UDBZ \
-          "${DMG_NAME}" \
-          AppWindowFinder.app || true
-        
-        # Fallback if create-dmg fails
-        if [[ ! -f "${DMG_NAME}" ]]; then
-          echo "create-dmg failed, creating simple DMG"
-          hdiutil create -volname "App Window Finder ${VERSION}" \
-                         -srcfolder AppWindowFinder.app \
-                         -ov -format UDBZ \
-                         "${DMG_NAME}"
-        fi
+        # Create DMG via hdiutil (UDBZ for good compression)
+        hdiutil create -volname "App Window Finder ${VERSION}" \
+                       -srcfolder AppWindowFinder.app \
+                       -ov -format UDBZ \
+                       "${DMG_NAME}"
         
         echo "✅ DMG created: ${DMG_NAME}"
         ls -la *.dmg
@@ -251,7 +213,7 @@ jobs:
     # 9. Run tests
     - name: Run tests
       run: |
-        swift test --filter "FuzzySearchTests|SearchItemTests" || true
+        swift test --filter "FuzzySearchTests|SearchItemTests"
         echo "✅ Tests completed"
 
     # 10. Build information output

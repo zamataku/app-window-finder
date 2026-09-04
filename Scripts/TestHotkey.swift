@@ -60,3 +60,4 @@ print("   - グローバルモニター: \(globalMonitor != nil ? "✅" : "❌")
 
 // メインループを実行
 RunLoop.current.run()
+

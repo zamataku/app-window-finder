@@ -82,3 +82,4 @@ print("\n待機中... Command+Shift+Space を押してください\n")
 
 // メインループを実行
 RunLoop.current.run()
+
