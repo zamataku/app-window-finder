@@ -23,7 +23,7 @@ public struct SearchItem: Identifiable, Equatable {
     public let tabURL: String?
     public let url: String?  // For browserTab type
     public let lastAccessTime: Date  // For browserTab sorting
-    
+
     public init(
         title: String,
         subtitle: String,
@@ -37,7 +37,7 @@ public struct SearchItem: Identifiable, Equatable {
         appPath: String? = nil,
         tabURL: String? = nil,
         url: String? = nil,
-        lastAccessTime: Date = Date(timeIntervalSince1970: min(Date().timeIntervalSince1970, 1893456000.0)) // Cap at 2030-01-01
+        lastAccessTime: Date = Date()
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -53,7 +53,7 @@ public struct SearchItem: Identifiable, Equatable {
         self.url = url
         self.lastAccessTime = lastAccessTime
     }
-    
+
     // Convenience initializer for history-based browser tabs
     public init(
         title: String,
@@ -80,7 +80,7 @@ public struct SearchItem: Identifiable, Equatable {
         self.url = url
         self.lastAccessTime = lastAccessTime
     }
-    
+
     public static func == (lhs: SearchItem, rhs: SearchItem) -> Bool {
         return lhs.id == rhs.id
     }

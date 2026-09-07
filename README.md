@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/zamataku/app-window-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/zamataku/app-window-finder/actions/workflows/ci.yml)
 [![Release](https://github.com/zamataku/app-window-finder/actions/workflows/release-production.yml/badge.svg)](https://github.com/zamataku/app-window-finder/actions/workflows/release-production.yml)
-[![Swift](https://img.shields.io/badge/Swift-6.1-orange.svg)](https://swift.org)
+[![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-macOS%2013.0+-blue.svg)](https://www.apple.com/macos/)
 
 A macOS app for switching between applications, windows, and browser tabs using fuzzy search.
@@ -80,6 +80,11 @@ swift build
 
 ### Testing
 
+Tests use the `Testing` framework, which ships with Xcode but not with the Command Line Tools alone. If `swift test` reports `no such module 'Testing'`, point the toolchain at Xcode:
+```bash
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+```
+
 Run all tests:
 ```bash
 swift test
@@ -154,9 +159,10 @@ Restart the app to clear cache if experiencing slow performance.
 Sources/AppWindowFinder/
 ├── App/                    # Application layer (AppDelegate, main app)
 ├── Core/                   # Core functionality and shared utilities
-│   ├── Cache/             # Cache management
+│   ├── Errors/            # Unified error type and Result helpers
 │   ├── Logging/           # Application logging
 │   ├── Permissions/       # Accessibility permission handling
+│   ├── Protocols/         # Service protocols and dependency container
 │   └── Search/            # Fuzzy search algorithm
 ├── Extensions/             # Swift extensions (NSImage, etc.)
 ├── Models/                 # Data structures for search items
@@ -174,6 +180,6 @@ Sources/AppWindowFinder/
 
 ## Privacy
 
-- All data stays on your Mac
-- No network requests or data collection
-- Only accesses window titles and browser tabs when searching
+- Window titles, browser tabs, and search history are stored only on your Mac and never uploaded
+- Browser history is read from a temporary read-only copy of the browser's local database
+- The only network requests are favicon lookups for browser tabs. The hostname of a tab (not the full URL) is sent to Google's favicon service, then DuckDuckGo's, and finally the site itself, in that order. No other data is collected or transmitted

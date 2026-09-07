@@ -10,7 +10,7 @@ print("アクセシビリティ権限: \(hasPermission ? "✅ 有効" : "❌ 無
 if !hasPermission {
     print("\n⚠️ アクセシビリティ権限が必要です")
     print("システム設定 > プライバシーとセキュリティ > アクセシビリティ から権限を付与してください")
-    
+
     // 権限要求ダイアログを表示
     let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
     AXIsProcessTrustedWithOptions(options)
@@ -41,12 +41,12 @@ let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event 
     let isCmd = modifiers.contains(.command)
     let isShift = modifiers.contains(.shift)
     let isSpace = event.keyCode == 49 // Space key
-    
+
     // すべてのキーダウンイベントをログ
     if event.keyCode == 49 || isCmd || isShift {
         print("📍 ローカル: keyCode=\(event.keyCode), Cmd=\(isCmd), Shift=\(isShift), modifiers=\(String(format: "0x%X", modifiers.rawValue))")
     }
-    
+
     // Command+Shift+Space の判定
     if isCmd && isShift && isSpace {
         eventCount += 1
@@ -62,12 +62,12 @@ let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { even
     let isCmd = modifiers.contains(.command)
     let isShift = modifiers.contains(.shift)
     let isSpace = event.keyCode == 49 // Space key
-    
+
     // すべてのキーダウンイベントをログ
     if event.keyCode == 49 || isCmd || isShift {
         print("🌍 グローバル: keyCode=\(event.keyCode), Cmd=\(isCmd), Shift=\(isShift), modifiers=\(String(format: "0x%X", modifiers.rawValue))")
     }
-    
+
     // Command+Shift+Space の判定
     if isCmd && isShift && isSpace {
         eventCount += 1

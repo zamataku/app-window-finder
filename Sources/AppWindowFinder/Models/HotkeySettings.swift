@@ -5,30 +5,30 @@ import AppKit
 public struct HotkeySettings: Codable, Equatable, Sendable {
     /// キーコード (例: Space = 49)
     public let keyCode: UInt16
-    
+
     /// Modifier flagsのrawValue
     private let modifierFlagsRawValue: UInt
-    
+
     /// Modifier flags
     public var modifierFlags: NSEvent.ModifierFlags {
         get { NSEvent.ModifierFlags(rawValue: modifierFlagsRawValue) }
     }
-    
+
     public init(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) {
         self.keyCode = keyCode
         self.modifierFlagsRawValue = modifierFlags.rawValue
     }
-    
+
     /// デフォルトのホットキー (Command+Shift+Space)
     public static let `default` = HotkeySettings(
         keyCode: 49, // Space
         modifierFlags: [.command, .shift]
     )
-    
+
     /// ホットキーの説明文字列
     public var displayString: String {
         var components: [String] = []
-        
+
         if modifierFlags.contains(.control) {
             components.append("⌃")
         }
@@ -41,12 +41,12 @@ public struct HotkeySettings: Codable, Equatable, Sendable {
         if modifierFlags.contains(.command) {
             components.append("⌘")
         }
-        
+
         components.append(keyCodeToString(keyCode))
-        
+
         return components.joined()
     }
-    
+
     /// キーコードを文字列に変換
     private func keyCodeToString(_ keyCode: UInt16) -> String {
         switch keyCode {
@@ -89,7 +89,7 @@ public struct HotkeySettings: Codable, Equatable, Sendable {
 /// UserDefaultsでホットキー設定を管理するためのヘルパー
 extension HotkeySettings {
     private static let userDefaultsKey = "HotkeySettings"
-    
+
     /// UserDefaultsから設定を読み込み
     public static func load() -> HotkeySettings {
         guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
@@ -98,7 +98,7 @@ extension HotkeySettings {
         }
         return settings
     }
-    
+
     /// UserDefaultsに設定を保存
     public func save() {
         if let data = try? JSONEncoder().encode(self) {

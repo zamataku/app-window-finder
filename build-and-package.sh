@@ -16,9 +16,11 @@ echo -e "${BLUE}🚀 AppWindowFinder - Complete Build and Package${NC}"
 echo "================================================="
 
 # Configuration
-APP_NAME="AppWindowFinder"
-BUNDLE_ID="io.github.appwindowfinder"
-VERSION="1.0.0"
+APP_NAME="${APP_NAME:-AppWindowFinder}"
+BUNDLE_ID="${BUNDLE_ID:-io.github.appwindowfinder}"
+VERSION="${VERSION:-1.0.0}"
+BUILD_VERSION="${BUILD_VERSION:-1}"
+MIN_OS="${MIN_OS:-13.0}"
 EXECUTABLE_PATH=".build/release/${APP_NAME}"
 OUTPUT_DIR="dist"
 APP_BUNDLE="${OUTPUT_DIR}/${APP_NAME}.app"
@@ -60,58 +62,42 @@ mkdir -p "${APP_BUNDLE}/Contents/Resources"
 echo "Copying executable..."
 cp "${EXECUTABLE_PATH}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 
-# Create Info.plist
-echo "Creating Info.plist..."
-cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundleIdentifier</key>
-    <string>${BUNDLE_ID}</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.productivity</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSUIElement</key>
-    <true/>
-</dict>
-</plist>
-EOF
+## Create Info.plist from template
+echo "Creating Info.plist from template..."
+TEMPLATE_PATH="Sources/AppWindowFinder/Resources/Info.plist.template"
+if [ ! -f "$TEMPLATE_PATH" ]; then
+    echo -e "${RED}❌ Missing Info.plist template at $TEMPLATE_PATH${NC}"
+    exit 1
+fi
 
-# Copy app icon if it exists
-if [ -f "AppIcon.icns" ]; then
-    echo "Copying app icon..."
+sed \
+  -e "s|\${APP_NAME}|${APP_NAME}|g" \
+  -e "s|\${BUNDLE_ID}|${BUNDLE_ID}|g" \
+  -e "s|\${VERSION}|${VERSION}|g" \
+  -e "s|\${BUILD_VERSION}|${BUILD_VERSION}|g" \
+  -e "s|\${MIN_OS}|${MIN_OS}|g" \
+  "$TEMPLATE_PATH" > "${APP_BUNDLE}/Contents/Info.plist"
+
+# Copy app icon (prefer Resources, fallback to root)
+if [ -f "Sources/AppWindowFinder/Resources/AppIcon.icns" ]; then
+    echo "Copying app icon from Resources..."
+    cp "Sources/AppWindowFinder/Resources/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/"
+elif [ -f "AppIcon.icns" ]; then
+    echo "Copying app icon from root..."
     cp "AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/"
 else
     echo "Creating placeholder icon..."
     touch "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
 fi
 
-# Sign the app bundle if certificate is available
-if security find-identity -v -p codesigning | grep -q "Apple Development"; then
-    echo "Signing app bundle..."
-    codesign --force --deep --sign - "${APP_BUNDLE}"
+# Codesign
+if [ -n "${CODESIGN_IDENTITY}" ]; then
+    echo "Signing app bundle with identity: ${CODESIGN_IDENTITY}"
+    codesign --force --deep --timestamp --options runtime --sign "${CODESIGN_IDENTITY}" "${APP_BUNDLE}"
+    codesign --verify --deep --strict "${APP_BUNDLE}"
 else
-    echo "No code signing certificate found. App will not be signed."
+    echo "No CODESIGN_IDENTITY provided. Using ad-hoc signing."
+    codesign --force --deep --sign - "${APP_BUNDLE}" || true
 fi
 
 echo "App bundle created: ${APP_BUNDLE}"
@@ -184,12 +170,12 @@ hdiutil convert "${OUTPUT_DIR}/temp.dmg" -format UDZO -o "${OUTPUT_DIR}/${DMG_NA
 # Clean up temporary DMG
 rm -f "${OUTPUT_DIR}/temp.dmg"
 
-# Sign the DMG if code signing identity is available
-if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
-    echo "Signing DMG..."
-    codesign --force --sign "Developer ID Application" "${OUTPUT_DIR}/${DMG_NAME}"
+# Optionally sign DMG (requires Developer ID Application)
+if [ -n "${DMG_SIGN_IDENTITY}" ]; then
+    echo "Signing DMG with identity: ${DMG_SIGN_IDENTITY}"
+    codesign --force --sign "${DMG_SIGN_IDENTITY}" "${OUTPUT_DIR}/${DMG_NAME}" || true
 else
-    echo "No Developer ID Application certificate found. DMG will not be signed."
+    echo "No DMG_SIGN_IDENTITY provided. DMG will not be signed."
 fi
 
 echo "DMG created successfully: ${OUTPUT_DIR}/${DMG_NAME}"

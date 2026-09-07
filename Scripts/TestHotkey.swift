@@ -10,7 +10,7 @@ print("アクセシビリティ権限: \(hasPermission ? "✅ 有効" : "❌ 無
 if !hasPermission {
     print("\n⚠️ アクセシビリティ権限が必要です")
     print("システム設定 > プライバシーとセキュリティ > アクセシビリティ から権限を付与してください")
-    
+
     // 権限要求ダイアログを表示
     let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
     AXIsProcessTrustedWithOptions(options)
@@ -29,9 +29,9 @@ let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event 
     let isCmd = event.modifierFlags.contains(.command)
     let isShift = event.modifierFlags.contains(.shift)
     let isSpace = event.keyCode == 49 // Space key
-    
+
     print("📍 ローカルキーイベント: keyCode=\(event.keyCode), Cmd=\(isCmd), Shift=\(isShift)")
-    
+
     if isCmd && isShift && isSpace {
         eventCount += 1
         print("✅ ホットキー検出！ (ローカル) 回数: \(eventCount)")
@@ -45,9 +45,9 @@ let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { even
     let isCmd = event.modifierFlags.contains(.command)
     let isShift = event.modifierFlags.contains(.shift)
     let isSpace = event.keyCode == 49 // Space key
-    
+
     print("🌍 グローバルキーイベント: keyCode=\(event.keyCode), Cmd=\(isCmd), Shift=\(isShift)")
-    
+
     if isCmd && isShift && isSpace {
         eventCount += 1
         print("✅ ホットキー検出！ (グローバル) 回数: \(eventCount)")
